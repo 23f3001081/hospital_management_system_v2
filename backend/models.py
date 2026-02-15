@@ -1,25 +1,31 @@
+import uuid 
 from flask_sqlalchemy import SQLAlchemy
-from datetime import datetime
+from flask_security import UserMixin, RoleMixin
 
 db = SQLAlchemy()
 
-# Association table for Many-to-Many relationship (User-Role)
 roles_users = db.Table('roles_users',
     db.Column('user_id', db.Integer(), db.ForeignKey('user.id')),
     db.Column('role_id', db.Integer(), db.ForeignKey('role.id'))
 )
 
-class Role(db.Model):
+class Role(db.Model, RoleMixin):
     id = db.Column(db.Integer(), primary_key=True)
     name = db.Column(db.String(80), unique=True)
     description = db.Column(db.String(255))
 
-class User(db.Model):
+class User(db.Model , UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     active = db.Column(db.Boolean())
+    # Added fs_uniquifier for Flask-Security compatibility
+    fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False)
+    
     roles = db.relationship('Role', secondary=roles_users, backref=db.backref('users', lazy='dynamic'))
+    doctor_profile = db.relationship('Doctor', backref='user', uselist=False)
+    patient_profile = db.relationship('Patient', backref='user', uselist=False)
+
     
     # Specific info based on role
     doctor_profile = db.relationship('Doctor', backref='user', uselist=False)

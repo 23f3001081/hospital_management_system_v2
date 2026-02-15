@@ -1,29 +1,56 @@
-from flask import Flask, jsonify, request
-from flask_jwt_extended import JWTManager, create_access_token
-from flask_bcrypt import Bcrypt
+from flask import Flask, request , jsonify 
+from flask_security import Security, SQLAlchemyUserDatastore, hash_password , verify_password 
+from flask_jwt_extended import JWTManager, create_access_token # For token-based auth
 from models import db, User, Role
-from flask_security import hash_password, verify_password
-from flask_security import SQLAlchemyUserDatastore, Security, hash_password
 import uuid
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hms.db'
-app.config['JWT_SECRET_KEY'] = 'iitm-hms-secret-key'
+app.config['SECRET_KEY'] = 'iit-madras-super-secret'
 app.config['SECURITY_PASSWORD_SALT'] = 'salty-salt'
+app.config['JWT_SECRET_KEY'] = 'jwt-secret-key' 
+
+# Flask-Security specific configs
+app.config['SECURITY_TOKEN_AUTHENTICATION_HEADER'] = 'Authentication-Token'
+app.config['SECURITY_PASSWORD_HASH'] = 'bcrypt'
 
 db.init_app(app)
-bcrypt = Bcrypt(app)
-jwt = JWTManager(app)
+# Setup Flask-Security
 user_datastore = SQLAlchemyUserDatastore(db, User, Role)
 security = Security(app, user_datastore)
+
+with app.app_context():
+    db.create_all()
+    
+    # Create Roles if they don't exist
+    if not Role.query.filter_by(name='admin').first():
+        user_datastore.create_role(name='admin', description='Hospital Staff')
+    if not Role.query.filter_by(name='doctor').first():
+        user_datastore.create_role(name='doctor', description='Medical Professional')
+    if not Role.query.filter_by(name='patient').first():
+        user_datastore.create_role(name='patient', description='User seeking care')
+    
+    # Create Admin programmatically
+    if not User.query.filter_by(username='admin').first():
+        user_datastore.create_user(
+            username='admin', 
+            password=hash_password('admin123'), 
+            roles=['admin'],
+            fs_uniquifier=str(uuid.uuid4()) # Essential fix
+        )
+    db.session.commit()
+
 
 # Login Route
 @app.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    user = User.query.filter_by(username=data.get('username')).first()
+    username = data.get('username')
+    password = data.get('password')
+    user = User.query.filter_by(username=username).first()
+    
 
-    if user and bcrypt.check_password_hash(user.password, data.get('password')):
+    if user and verify_password(password, user.password):
         # Get the role name for redirection logic
         role = user.roles[0].name
         
@@ -58,22 +85,8 @@ def register_patient():
     db.session.commit()
     return jsonify({'message': 'Patient registered successfully'}), 201
 
-# This creates the DB and Admin programmatically
-with app.app_context():
-    db.create_all()
-    # Create Roles if they don't exist
-    for r_name in ['admin', 'doctor', 'patient']:
-        if not Role.query.filter_by(name=r_name).first():
-            db.session.add(Role(name=r_name))
-    db.session.commit()
+
     
-    # Create Admin if not exists
-    if not User.query.filter_by(username='admin').first():
-        hashed_pw = bcrypt.generate_password_hash('admin123').decode('utf-8')
-        admin_role = Role.query.filter_by(name='admin').first()
-        admin_user = User(username='admin', password=hashed_pw, roles=[admin_role])
-        db.session.add(admin_user)
-        db.session.commit()
 
 if __name__ == '__main__':
     app.run(debug=True)
