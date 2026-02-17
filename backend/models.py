@@ -4,6 +4,7 @@ from flask_security import UserMixin, RoleMixin
 
 db = SQLAlchemy()
 
+# Association table for Many-to-Many relationship (User-Role)
 roles_users = db.Table('roles_users',
     db.Column('user_id', db.Integer(), db.ForeignKey('user.id')),
     db.Column('role_id', db.Integer(), db.ForeignKey('role.id'))
@@ -14,18 +15,16 @@ class Role(db.Model, RoleMixin):
     name = db.Column(db.String(80), unique=True)
     description = db.Column(db.String(255))
 
-class User(db.Model , UserMixin):
+class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), unique=True, nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     active = db.Column(db.Boolean())
-    # Added fs_uniquifier for Flask-Security compatibility
+    # Required for Flask-Security compatibility
     fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False)
     
     roles = db.relationship('Role', secondary=roles_users, backref=db.backref('users', lazy='dynamic'))
-    doctor_profile = db.relationship('Doctor', backref='user', uselist=False)
-    patient_profile = db.relationship('Patient', backref='user', uselist=False)
-
     
     # Specific info based on role
     doctor_profile = db.relationship('Doctor', backref='user', uselist=False)
@@ -42,7 +41,7 @@ class Doctor(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     department_id = db.Column(db.Integer, db.ForeignKey('department.id'))
     specialization = db.Column(db.String(100))
-    availability = db.Column(db.String(255)) # Store as JSON or string
+    availability = db.Column(db.String(255)) 
     appointments = db.relationship('Appointment', backref='doctor', lazy=True)
 
 class Patient(db.Model):
@@ -58,7 +57,7 @@ class Appointment(db.Model):
     patient_id = db.Column(db.Integer, db.ForeignKey('patient.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
     time = db.Column(db.Time, nullable=False)
-    status = db.Column(db.String(20), default='Booked') # Booked, Completed, Cancelled
+    status = db.Column(db.String(20), default='Booked') 
     treatment = db.relationship('Treatment', backref='appointment', uselist=False)
 
 class Treatment(db.Model):
