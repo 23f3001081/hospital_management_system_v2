@@ -1,8 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
+from flask_jwt_extended import JWTManager, create_access_token, get_jwt, jwt_required, get_jwt_identity, verify_jwt_in_request
 from functools import wraps
-from models import db, User, Role, Patient, Doctor, Department, Appointment 
+from models import Treatment, db, User, Role, Patient, Doctor, Department, Appointment 
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
@@ -29,9 +29,9 @@ def role_required(required_role):
         @wraps(fn)
         def decorator(*args, **kwargs):
             verify_jwt_in_request()
-            current_user = get_jwt_identity()
+            claims = get_jwt()
             
-            if current_user.get('role') == required_role:
+            if claims.get('role') == required_role:
                 return fn(*args, **kwargs)
             else:
                 return jsonify({'message': f'Access forbidden: {required_role}s only'}), 403
@@ -61,7 +61,10 @@ def login():
         user_role = user.roles[0].name if user.roles else 'Unknown'
         
         # Give the user a digital keycard (token)
-        access_token = create_access_token(identity={'id': user.id, 'role': user_role})
+        access_token = create_access_token(
+    identity=str(user.id), 
+    additional_claims={'role': user_role}
+)
         
         return jsonify({
             'message': 'Login successful',
@@ -126,6 +129,53 @@ def admin_dashboard_stats():
         'total_doctors': total_doctors,
         'total_appointments': total_appointments
     }), 200
+
+@app.route('/api/admin/doctor', methods=['POST'])
+@admin_required
+def add_doctor():
+    """Admin only: Create a new doctor profile and user account."""
+    data = request.get_json()
+    
+    # Validation: Ensure all required fields are provided
+    required_fields = ['username', 'email', 'password', 'specialization', 'department_name']
+    if not all(k in data for k in required_fields):
+        return jsonify({'message': 'Missing required fields'}), 400
+
+    # Prevent duplicate users
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'message': 'Email already registered'}), 409
+
+    # 1. Handle Department logic
+    dept_name = data['department_name']
+    department = Department.query.filter_by(name=dept_name).first()
+    if not department:
+        department = Department(name=dept_name, description="General")
+        db.session.add(department)
+        db.session.flush() 
+
+    # 2. Create User account
+    doctor_role = Role.query.filter_by(name='Doctor').first()
+    new_user = User(
+        username=data['username'],
+        email=data['email'],
+        password_hash=generate_password_hash(data['password']),
+        active=True
+    )
+    new_user.roles.append(doctor_role)
+    db.session.add(new_user)
+    db.session.flush() 
+
+    # 3. Create Doctor profile linked to User and Department
+    new_doctor = Doctor(
+        user_id=new_user.id,
+        department_id=department.id,
+        specialization=data['specialization'],
+        availability=data.get('availability', 'Not specified')
+    )
+    db.session.add(new_doctor)
+    db.session.commit()
+
+    return jsonify({'message': 'Doctor added successfully!'}), 201
 
 @app.route('/api/admin/doctor/<int:doctor_id>', methods=['PUT'])
 @admin_required
@@ -206,6 +256,67 @@ def remove_user(user_id):
     db.session.commit()
     return jsonify({'message': f'User {user.username} has been removed from the system'}), 200
 
+#Doctor Functions
+
+@app.route('/api/doctor/appointments', methods=['GET'])
+@doctor_required
+def get_doctor_appointments():
+    """Doctor views their assigned appointments."""
+    user_id = get_jwt_identity() # Get logged-in doctor's ID
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
+    
+    appointments = Appointment.query.filter_by(doctor_id=doctor.id).all()
+    return jsonify([{
+        'id': a.id,
+        'patient_name': a.patient.user.username,
+        'date': str(a.date),
+        'status': a.status
+    } for a in appointments]), 200
+
+@app.route('/api/doctor/complete-visit', methods=['POST'])
+@doctor_required
+def complete_visit():
+    """Doctor marks visit as completed and adds notes."""
+    data = request.get_json()
+    appt = Appointment.query.get(data['appointment_id'])
+    
+    if appt:
+        appt.status = 'Completed'
+        # Add treatment record
+        new_treatment = Treatment(
+            appointment_id=appt.id,
+            diagnosis=data['diagnosis'],
+            prescription=data['prescription']
+        )
+        db.session.add(new_treatment)
+        db.session.commit()
+        return jsonify({'message': 'Visit record saved!'}), 200
+    
+# patient functions
+
+@app.route('/api/patient/book', methods=['POST'])
+@patient_required
+def book_appointment():
+    """Patient books a new appointment."""
+    data = request.get_json()
+    user_id = get_jwt_identity()
+    patient = Patient.query.filter_by(user_id=user_id).first()
+    
+    # Convert string date/time from frontend to Python objects
+    from datetime import datetime
+    appt_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+    appt_time = datetime.strptime(data['time'], '%H:%M').time()
+
+    new_appt = Appointment(
+        doctor_id=data['doctor_id'],
+        patient_id=patient.id,
+        date=appt_date,
+        time=appt_time,
+        status='Booked'
+    )
+    db.session.add(new_appt)
+    db.session.commit()
+    return jsonify({'message': 'Appointment Booked!'}), 201     
 # ==========================================
 # 4. START THE SERVER
 # ==========================================
