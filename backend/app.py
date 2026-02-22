@@ -1,155 +1,213 @@
 from flask import Flask, request, jsonify
-from flask_security import Security, SQLAlchemyUserDatastore, hash_password, verify_password, auth_required, roles_accepted
 from flask_cors import CORS
-from models import db, User, Role, Department, Doctor, Patient, Appointment
-import uuid
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
+from functools import wraps
+from models import db, User, Role, Patient, Doctor, Department, Appointment 
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 
-# --- Configuration ---
-app.config['SECRET_KEY'] = 'iit-madras-super-secret'
-app.config['SECURITY_PASSWORD_SALT'] = 'salty-salt'
+# ==========================================
+# 1. CONFIGURATION & SETUP
+# ==========================================
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = 'your-super-secret-jwt-key' # Used to encrypt tokens
 
-# ✅ Flask-Security 4.x identity config (FIXED)
-app.config['SECURITY_USER_IDENTITY_ATTRIBUTES'] = [
-    {"username": {"mapper": lambda x: x}}
-]
-app.config['SECURITY_USERNAME_ENABLE'] = True
-app.config['SECURITY_EMAIL_VALIDATOR_ARGS'] = {"check_deliverability": False}
-app.config['SECURITY_TOKEN_AUTHENTICATION_HEADER'] = 'Authentication-Token'
-app.config['SECURITY_PASSWORD_HASH'] = 'bcrypt'
-app.config['SECURITY_TOKEN_MAX_AGE'] = 3600
-
-# --- Initialize Extensions ---
 db.init_app(app)
-CORS(app)
+CORS(app) 
+jwt = JWTManager(app)
 
-# Setup Flask-Security
-user_datastore = SQLAlchemyUserDatastore(db, User, Role)
-security = Security(app, user_datastore, register_blueprint=False)
+# ==========================================
+# 2. ROLE-BASED ACCESS CONTROL (RBAC) DECORATORS
+# ==========================================
+# This section creates "locks" for our doors. We will put these locks on 
+# specific routes later so only the right people can get in.
 
-# --- Database & Seeding ---
-with app.app_context():
-    db.create_all()
+def role_required(required_role):
+    def wrapper(fn):
+        @wraps(fn)
+        def decorator(*args, **kwargs):
+            verify_jwt_in_request()
+            current_user = get_jwt_identity()
+            
+            if current_user.get('role') == required_role:
+                return fn(*args, **kwargs)
+            else:
+                return jsonify({'message': f'Access forbidden: {required_role}s only'}), 403
+        return decorator
+    return wrapper
 
-    # Create roles
-    for r_name in ['admin', 'doctor', 'patient']:
-        if not Role.query.filter_by(name=r_name).first():
-            user_datastore.create_role(name=r_name)
+# These are the actual locks we will use later
+admin_required = role_required('Admin')
+doctor_required = role_required('Doctor')
+patient_required = role_required('Patient')
 
-    # Create admin user
-    if not User.query.filter_by(username='admin').first():
-        user_datastore.create_user(
-            username='admin',
-            email='admin@hms.com',
-            password=hash_password('admin123'),
-            roles=['admin'],
-            fs_uniquifier=str(uuid.uuid4()),
-            active=True
-        )
 
-    # Default departments
-    depts = ['Cardiology', 'General Medicine', 'Orthopedics', 'Pediatrics', 'Neurology', 'Dermatology', 'Gynecology']
-    for dept_name in depts:
-        if not Department.query.filter_by(name=dept_name).first():
-            db.session.add(Department(name=dept_name, description=f"{dept_name} Department"))
+# ==========================================
+# 3. AUTHENTICATION ROUTES (Login & Register)
+# ==========================================
 
-    db.session.commit()
-
-# ---------------- ROUTES ---------------- #
-
-@app.route('/login', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"message": "Missing JSON body"}), 400
+    """Universal login for Admins, Doctors, and Patients."""
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
 
-    user = User.query.filter_by(username=data.get('username')).first()
+    user = User.query.filter_by(email=email).first()
 
-    if user and verify_password(data.get('password'), user.password):
-        token = user.get_auth_token()
-        role = user.roles[0].name if user.roles else None
-
+    if user and check_password_hash(user.password_hash, password):
+        user_role = user.roles[0].name if user.roles else 'Unknown'
+        
+        # Give the user a digital keycard (token)
+        access_token = create_access_token(identity={'id': user.id, 'role': user_role})
+        
         return jsonify({
-            "token": token,
-            "role": role,
-            "message": "Login successful!"
+            'message': 'Login successful',
+            'access_token': access_token,
+            'role': user_role,
+            'username': user.username
         }), 200
 
-    return jsonify({"message": "Invalid username or password"}), 401
+    return jsonify({'message': 'Invalid email or password'}), 401
 
 
-@app.route('/register/patient', methods=['POST'])
+@app.route('/api/register/patient', methods=['POST'])
 def register_patient():
-    data = request.get_json(silent=True)
-    if not data or not data.get('username'):
-        return jsonify({"message": "Invalid data"}), 400
+    """Only patients can register themselves."""
+    data = request.get_json()
+    
+    if not all(k in data for k in ('username', 'email', 'password', 'contact')):
+        return jsonify({'message': 'Missing required fields'}), 400
 
-    if User.query.filter_by(username=data.get('username')).first():
-        return jsonify({'message': 'User already exists'}), 400
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'message': 'Email already registered'}), 409
+        
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'message': 'Username already taken'}), 409
 
-    new_user = user_datastore.create_user(
-        username=data.get('username'),
-        email=data.get('email', f"{data.get('username')}@hms.com"),
-        password=hash_password(data.get('password')),
-        roles=['patient'],
-        fs_uniquifier=str(uuid.uuid4()),
+    patient_role = Role.query.filter_by(name='Patient').first()
+    
+    # Save the basic user info
+    new_user = User(
+        username=data['username'],
+        email=data['email'],
+        password_hash=generate_password_hash(data['password']),
         active=True
     )
+    new_user.roles.append(patient_role)
+    db.session.add(new_user)
+    db.session.flush() 
 
-    new_patient = Patient(user=new_user, contact=data.get('contact'), address=data.get('address'))
+    # Save the specific patient info
+    new_patient = Patient(
+        user_id=new_user.id,
+        contact=data['contact'],
+        address=data.get('address', '')
+    )
     db.session.add(new_patient)
     db.session.commit()
 
     return jsonify({'message': 'Patient registered successfully'}), 201
 
+# Admin Dashboard 
 
-@app.route('/admin/stats', methods=['GET'])
-@auth_required('token')
-@roles_accepted('admin')
-def get_admin_stats():
-    stats = {
-        "total_doctors": Doctor.query.count(),
-        "total_patients": Patient.query.count(),
-        "total_appointments": Appointment.query.count()
-    }
-    return jsonify(stats), 200
+@app.route('/api/admin/dashboard', methods=['GET'])
+@admin_required
+def admin_dashboard_stats():
+    """Dashboard: show total patients, doctors, appointments."""
+    total_patients = Patient.query.count()
+    total_doctors = Doctor.query.count()
+    total_appointments = Appointment.query.count()
+    
+    return jsonify({
+        'total_patients': total_patients,
+        'total_doctors': total_doctors,
+        'total_appointments': total_appointments
+    }), 200
 
+@app.route('/api/admin/doctor/<int:doctor_id>', methods=['PUT'])
+@admin_required
+def update_doctor(doctor_id):
+    """Add and update doctor profiles (Update portion)."""
+    doctor = Doctor.query.get(doctor_id)
+    if not doctor:
+        return jsonify({'message': 'Doctor not found'}), 404
 
-@app.route('/admin/add-doctor', methods=['POST'])
-@auth_required('token')
-@roles_accepted('admin')
-def add_doctor():
-    data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"message": "Missing JSON body"}), 400
-
-    if User.query.filter_by(username=data['username']).first():
-        return jsonify({"message": "Username already exists"}), 400
-
-    new_user = user_datastore.create_user(
-        username=data['username'],
-        email=data.get('email', f"{data['username']}@hms.com"),
-        password=hash_password(data['password']),
-        roles=['doctor'],
-        fs_uniquifier=str(uuid.uuid4()),
-        active=True
-    )
-
-    new_doctor = Doctor(
-        user_id=new_user.id,
-        department_id=data.get('department_id'),
-        specialization=data.get('specialization'),
-        availability=data.get('availability')
-    )
-
-    db.session.add(new_doctor)
+    data = request.get_json()
+    
+    if 'specialization' in data:
+        doctor.specialization = data['specialization']
+    if 'availability' in data:
+        doctor.availability = data['availability']
+    
     db.session.commit()
+    return jsonify({'message': 'Doctor updated successfully'}), 200
 
-    return jsonify({"message": "Doctor added successfully"}), 201
+@app.route('/api/admin/doctors/search', methods=['GET'])
+@admin_required
+def search_doctors():
+    """Search doctors (by name/specialization)."""
+    query = request.args.get('q', '')
+    
+    # Search by specialization or the linked User's username
+    doctors = Doctor.query.join(User).filter(
+        (Doctor.specialization.ilike(f'%{query}%')) | 
+        (User.username.ilike(f'%{query}%'))
+    ).all()
+    
+    results = [{'id': doc.id, 'name': doc.user.username, 'specialization': doc.specialization} for doc in doctors]
+    return jsonify(results), 200
 
+@app.route('/api/admin/patients/search', methods=['GET'])
+@admin_required
+def search_patients():
+    """Search patients (by name/ID/contact)."""
+    query = request.args.get('q', '')
+    
+    patients = Patient.query.join(User).filter(
+        (Patient.contact.ilike(f'%{query}%')) | 
+        (User.username.ilike(f'%{query}%')) |
+        (User.id == int(query) if query.isdigit() else False)
+    ).all()
+    
+    results = [{'id': p.id, 'name': p.user.username, 'contact': p.contact} for p in patients]
+    return jsonify(results), 200
 
+@app.route('/api/admin/appointments', methods=['GET'])
+@admin_required
+def view_all_appointments():
+    """View/manage all appointments (upcoming & past)."""
+    appointments = Appointment.query.all()
+    results = [{
+        'id': appt.id,
+        'doctor': appt.doctor.user.username,
+        'patient': appt.patient.user.username,
+        'date': str(appt.date),
+        'time': str(appt.time),
+        'status': appt.status
+    } for appt in appointments]
+    
+    return jsonify(results), 200
+
+@app.route('/api/admin/user/<int:user_id>', methods=['DELETE'])
+@admin_required
+def remove_user(user_id):
+    """Blacklist/remove doctors & patients from the system."""
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+        
+    if 'Admin' in [role.name for role in user.roles]:
+        return jsonify({'message': 'Cannot delete an Admin'}), 403
+
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({'message': f'User {user.username} has been removed from the system'}), 200
+
+# ==========================================
+# 4. START THE SERVER
+# ==========================================
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True, port=5000)
