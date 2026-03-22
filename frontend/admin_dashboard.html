@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Dashboard</title>
+    <!-- Simple CSS files -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- External charting library as requested -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-light">
+    <div id="app">
+        <!-- Navbar -->
+        <nav class="navbar navbar-dark bg-dark">
+            <div class="container-fluid">
+                <span class="navbar-brand mb-0 h1">Admin Management Portal</span>
+                <button class="btn btn-outline-light" @click="logout">Logout</button>
+            </div>
+        </nav>
+
+        <div class="container mt-4">
+            <div v-if="error" class="alert alert-danger">{{ error }}</div>
+            <div v-if="success" class="alert alert-success">{{ success }}</div>
+
+            <!-- Dashboard Stats -->
+            <h3>System Overview</h3>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5>Total Patients</h5>
+                            <p class="fs-2">{{ stats.total_patients }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5>Total Doctors</h5>
+                            <p class="fs-2">{{ stats.total_doctors }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5>Total Appointments</h5>
+                            <p class="fs-2">{{ stats.total_appointments }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart.js Graphics -->
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-body">
+                    <canvas id="myChart" height="100"></canvas>
+                </div>
+            </div>
+
+            <!-- Add Doctor Simple form with HTML validations -->
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">Create New Doctor Account</div>
+                <div class="card-body">
+                    <form @submit.prevent="addDoctor">
+                        <div class="row">
+                            <div class="col"><input type="text" class="form-control" v-model="newDoc.username"
+                                    placeholder="Doctor Name" required></div>
+                            <div class="col"><input type="email" class="form-control" v-model="newDoc.email"
+                                    placeholder="Email Address" required></div>
+                            <div class="col">
+                                <select class="form-select" v-model="newDoc.department_name" required>
+                                    <option value="" disabled selected>Select Department</option>
+                                    <option value="General Medicine">General Medicine</option>
+                                    <option value="Cardiology">Cardiology</option>
+                                    <option value="Neurology">Neurology</option>
+                                    <option value="Dermatology">Dermatology</option>
+                                    <option value="Pediatrics">Pediatrics</option>
+                                    <option value="Oncology">Oncology</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <select class="form-select" v-model="newDoc.specialization" required>
+                                    <option value="" disabled selected>Select Specialization</option>
+                                    <option value="General Physician">General Physician</option>
+                                    <option value="Cardiologist">Cardiologist</option>
+                                    <option value="Neurologist">Neurologist</option>
+                                    <option value="Dermatologist">Dermatologist</option>
+                                    <option value="Pediatrician">Pediatrician</option>
+                                    <option value="Oncologist">Oncologist</option>
+                                </select>
+                            </div>
+                            <div class="col-auto"><button type="submit" class="btn btn-primary">Save Doctor
+                                    Profile</button></div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Manage Doctors Table (CRUD) -->
+            <h3 class="mt-4">Manage Hospital Doctors</h3>
+            <table class="table table-bordered bg-white shadow-sm">
+                <thead class="table-primary">
+                    <tr>
+                        <th>Doc ID</th>
+                        <th>Name (User)</th>
+                        <th>Department</th>
+                        <th>Specialization (Editable)</th>
+                        <th>Availability (Editable)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="doc in doctors" :key="doc.id">
+                        <td>{{ doc.id }}</td>
+                        <td><b>Dr. {{ doc.name }}</b> <br><small>User ID: {{ doc.user_id }}</small></td>
+                        <td>{{ doc.department }}</td>
+                        <td>
+                            <select class="form-select form-select-sm" v-model="doc.specialization">
+                                <option value="General Physician">General Physician</option>
+                                <option value="Cardiologist">Cardiologist</option>
+                                <option value="Neurologist">Neurologist</option>
+                                <option value="Dermatologist">Dermatologist</option>
+                                <option value="Orthopedic Surgeon">Orthopedic Surgeon</option>
+                                <option value="Pediatrician">Pediatrician</option>
+                                <option value="Oncologist">Oncologist</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm" v-model="doc.availability"
+                                placeholder="e.g. Mon-Fri">
+                        </td>
+                        <td>
+                            <button class="btn btn-sm btn-success me-1 mb-1"
+                                @click="updateDoctor(doc.id, doc.specialization, doc.availability)">Save
+                                Profile</button>
+                            <button class="btn btn-sm btn-danger mb-1" @click="removeUser(doc.user_id)">Remove Profile
+                            </button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- View All Appointments Table -->
+            <h3 class="mt-5">All Booked Appointments</h3>
+            <table class="table table-bordered bg-white">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Doctor</th>
+                        <th>Patient</th>
+                        <th>Date</th>
+                        <th>Exact Time</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="appt in appointments" :key="appt.id">
+                        <td>{{ appt.id }}</td>
+                        <td>{{ appt.doctor }}</td>
+                        <td>{{ appt.patient }}</td>
+                        <td>{{ appt.date }}</td>
+                        <td>{{ appt.time_slot }}</td>
+                        <td><b>{{ appt.status }}</b></td>
+                        <td><button class="btn btn-sm btn-danger" @click="deleteAppt(appt.id)">Erase Record</button>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        createApp({
+            data() {
+                return {
+                    token: localStorage.getItem('access_token'),
+                    error: '', success: '',
+                    stats: { total_patients: 0, total_doctors: 0, total_appointments: 0 },
+                    newDoc: { username: '', email: '', specialization: '', department_name: '' },
+                    appointments: [],
+                    doctors: []
+                }
+            },
+            methods: {
+                // Helper function
+                authHeader() { return { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }; },
+
+                logout() { localStorage.clear(); window.location.href = 'index.html'; },
+
+                async fetchData() {
+                    try {
+                        // Pull dashboard API
+                        const res1 = await fetch('http://127.0.0.1:5000/api/admin/dashboard', { headers: this.authHeader() });
+                        this.stats = await res1.json();
+
+                        // Basic ChartJS integration
+                        if (window.myChartInstance) {
+                            window.myChartInstance.destroy();
+                        }
+                        const ctx = document.getElementById('myChart');
+                        window.myChartInstance = new Chart(ctx, {
+                            type: 'bar',
+                            data: {
+                                labels: ['Total Registered Patients', 'Total Emplolyed Doctors', 'Total Booked Appointments'],
+                                datasets: [{
+                                    label: 'Hospital Usage Numbers',
+                                    data: [this.stats.total_patients, this.stats.total_doctors, this.stats.total_appointments],
+                                    backgroundColor: ['#0d6efd', '#198754', '#ffc107']
+                                }]
+                            }
+                        });
+
+                        const res2 = await fetch('http://127.0.0.1:5000/api/admin/appointments', { headers: this.authHeader() });
+                        this.appointments = await res2.json();
+
+                        // Fetching Doctors for the CRUD table
+                        const res3 = await fetch('http://127.0.0.1:5000/api/admin/doctors', { headers: this.authHeader() });
+                        this.doctors = await res3.json();
+                    } catch (e) { this.error = "Error loading python responses."; }
+                },
+                async addDoctor() {
+                    try {
+                        const res = await fetch('http://127.0.0.1:5000/api/admin/doctor', {
+                            method: 'POST', headers: this.authHeader(), body: JSON.stringify(this.newDoc)
+                        });
+                        const data = await res.json();
+                        // Alert the Admin visually and reset the form
+                        if (res.ok) {
+                            this.success = "Success! Give the doctor this temporary password: " + data.generated_password;
+                            alert("DOCTOR SAVED SUCCESSFULLY!\n\nEmail: " + this.newDoc.email + "\nTemporary Password: " + data.generated_password);
+                            this.newDoc = { username: '', email: '', specialization: '', department_name: '' };
+                            this.fetchData();
+                        }
+                        else if (res.status === 401) {
+                            alert("SESSION EXPIRED: Your security token timed out. You will be logged out now. Please log in again.");
+                            this.logout();
+                        }
+                        else {
+                            this.error = data.message || data.msg || "Server rejection";
+                            alert("ERROR SAVING DOCTOR: " + this.error);
+                        }
+                    } catch (e) {
+                        this.error = "Failed to run POST.";
+                        alert("NETWORK ERROR: Cannot reach Python Server.");
+                    }
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                },
+                async updateDoctor(doc_id, spec, avail) {
+                    try {
+                        const res = await fetch('http://127.0.0.1:5000/api/admin/doctor/' + doc_id, {
+                            method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ specialization: spec, availability: avail })
+                        });
+                        if (res.ok) { this.success = "Doctor profile instantly updated via DB!"; this.fetchData(); }
+                        else { const data = await res.json(); this.error = data.message; }
+                    } catch (e) { this.error = "Network error during PUT request."; }
+                },
+                async removeUser(user_id) {
+                    if (confirm("DANGER: Permanently revoke this doctor's auth and delete their hospital profile? This cannot be undone.")) {
+                        const res = await fetch('http://127.0.0.1:5000/api/admin/user/' + user_id, { method: 'DELETE', headers: this.authHeader() });
+                        if (res.ok) { this.success = "Doctor completely erased from the hospital network."; this.fetchData(); }
+                        else { const data = await res.json(); this.error = data.message; }
+                    }
+                },
+                async deleteAppt(id) {
+                    if (confirm("Permanently erase this booking from the system?")) {
+                        await fetch('http://127.0.0.1:5000/api/admin/appointment/' + id, { method: 'DELETE', headers: this.authHeader() });
+                        this.fetchData(); // reload
+                    }
+                }
+            },
+            mounted() {
+                // JWT Role enforcement on frontend before rendering
+                if (!this.token || localStorage.getItem('role') !== 'Admin') this.logout();
+                else this.fetchData();
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>

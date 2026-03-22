@@ -62,7 +62,7 @@ class Appointment(db.Model):
     doctor_id = db.Column(db.Integer, db.ForeignKey('doctors.id'), nullable=False)
     patient_id = db.Column(db.Integer, db.ForeignKey('patients.id'), nullable=False)
     date = db.Column(db.Date, nullable=False)
-    time = db.Column(db.Time, nullable=False)
+    time_slot = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='Booked')
     
     treatment = db.relationship('Treatment', backref='appointment', uselist=False, cascade='all, delete-orphan')

@@ -1,0 +1,13 @@
+{
+  "venvPath": "d:\\hms_v2",
+  "venv": "myenv",
+  "extraPaths": [
+    "backend"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "backend",
+      "extraPaths": ["."]
+    }
+  ]
+}

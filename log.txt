@@ -1,0 +1,9 @@
+1b63fe8  Authentication and Role-Based Access(Admin/Doctor/Patient)
+e0e2d7b Update code and fix minor bugs
+d2dd3a2 fixed some errors
+121d117 Milestone-HMS-V2 Admin-Dashboard-Management
+23f485a Made changes
+597f88e Milestone-HMS-V2: made backend logic of login page
+65ae096 Milestone-HMS-V2: Added Flask-Bcrypt for secure password hashing
+a918707 milestone 1 - Database relationship
+50b75a4 Initial commit

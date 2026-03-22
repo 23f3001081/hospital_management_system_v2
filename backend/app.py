@@ -1,9 +1,34 @@
+import os
+import csv
+from datetime import datetime, timedelta
+from functools import wraps
+import secrets
+import string
+from celery import Celery
+from celery.schedules import crontab
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, get_jwt, jwt_required, get_jwt_identity, verify_jwt_in_request
-from functools import wraps
-from models import Treatment, db, User, Role, Patient, Doctor, Department, Appointment 
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    get_jwt,
+    get_jwt_identity,
+    verify_jwt_in_request,
+    jwt_required
+)
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from models import (
+    Treatment,
+    db,
+    User,
+    Role,
+    Patient,
+    Doctor,
+    Department,
+    Appointment
+)
 
 app = Flask(__name__)
 
@@ -12,11 +37,55 @@ app = Flask(__name__)
 # ==========================================
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = 'your-super-secret-jwt-key' # Used to encrypt tokens
+app.config['JWT_SECRET_KEY'] = 'your-super-secret-jwt-key'  # Encrypt tokens
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24) # Disable strict 15-minute expiration for development
 
 db.init_app(app)
-CORS(app) 
+CORS(app)
 jwt = JWTManager(app)
+
+# ==========================================
+# CACHING CONFIGURATION
+# ==========================================
+from flask_caching import Cache
+app.config['CACHE_TYPE'] = 'RedisCache'
+app.config['CACHE_REDIS_URL'] = 'redis://localhost:6379/1' # Use DB 1 to isolate from Celery jobs
+cache = Cache(app)
+
+# ==========================================
+# CELERY & REDIS CONFIGURATION
+# ==========================================
+def make_celery(app):
+    celery = Celery(app.import_name)
+    
+    # Modern Celery strictly enforces lowercase config keys mapping
+    celery.conf.update(
+        broker_url='redis://localhost:6379/0',
+        result_backend='redis://localhost:6379/0',
+        timezone='UTC'
+    )
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery.Task = ContextTask
+    return celery
+
+celery = make_celery(app)
+
+# Configure periodic tasks (Celery Beat)
+celery.conf.beat_schedule = {
+    'daily-reminders': {
+        'task': 'app.send_daily_reminders',
+        'schedule': crontab(hour=8, minute=0), # Every morning 8 AM
+    },
+    'monthly-reports': {
+        'task': 'app.generate_monthly_doctor_report',
+        'schedule': crontab(0, 0, day_of_month='1'), # 1st day of month
+    }
+}
 
 # ==========================================
 # 2. ROLE-BASED ACCESS CONTROL (RBAC) DECORATORS
@@ -33,8 +102,7 @@ def role_required(required_role):
             
             if claims.get('role') == required_role:
                 return fn(*args, **kwargs)
-            else:
-                return jsonify({'message': f'Access forbidden: {required_role}s only'}), 403
+            return jsonify({'message': f'Access forbidden: {required_role}s only'}), 403
         return decorator
     return wrapper
 
@@ -42,6 +110,14 @@ def role_required(required_role):
 admin_required = role_required('Admin')
 doctor_required = role_required('Doctor')
 patient_required = role_required('Patient')
+
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({
+        "status": "online",
+        "message": "Welcome to the HMS API Backend!",
+        "note": "Almost all routes are under /api/ and require authentication tokens."
+    }), 200
 
 
 # ==========================================
@@ -76,7 +152,7 @@ def login():
     return jsonify({'message': 'Invalid email or password'}), 401
 
 
-@app.route('/api/register/patient', methods=['POST'])
+@app.route('/api/register', methods=['POST'])
 def register_patient():
     """Only patients can register themselves."""
     data = request.get_json()
@@ -114,6 +190,13 @@ def register_patient():
 
     return jsonify({'message': 'Patient registered successfully'}), 201
 
+@app.route('/api/departments', methods=['GET'])
+def get_departments():
+    """Public route for patients to see specializations/departments."""
+    departments = Department.query.all()
+    results = [{'id': d.id, 'name': d.name, 'description': d.description} for d in departments]
+    return jsonify(results), 200
+
 # Admin Dashboard 
 
 @app.route('/api/admin/dashboard', methods=['GET'])
@@ -137,13 +220,21 @@ def add_doctor():
     data = request.get_json()
     
     # Validation: Ensure all required fields are provided
-    required_fields = ['username', 'email', 'password', 'specialization', 'department_name']
+    required_fields = ['username', 'email', 'specialization', 'department_name']
     if not all(k in data for k in required_fields):
         return jsonify({'message': 'Missing required fields'}), 400
 
     # Prevent duplicate users
     if User.query.filter_by(email=data['email']).first():
         return jsonify({'message': 'Email already registered'}), 409
+        
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'message': 'Username already taken'}), 409
+
+    # Generate a random password if not provided
+    raw_password = data.get('password')
+    if not raw_password:
+        raw_password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(12))
 
     # 1. Handle Department logic
     dept_name = data['department_name']
@@ -158,7 +249,7 @@ def add_doctor():
     new_user = User(
         username=data['username'],
         email=data['email'],
-        password_hash=generate_password_hash(data['password']),
+        password_hash=generate_password_hash(raw_password),
         active=True
     )
     new_user.roles.append(doctor_role)
@@ -175,7 +266,15 @@ def add_doctor():
     db.session.add(new_doctor)
     db.session.commit()
 
-    return jsonify({'message': 'Doctor added successfully!'}), 201
+    print(f"\n--- DOCTOR CREATED ---")
+    print(f"Username: {data['username']}")
+    print(f"Generated Password: {raw_password}")
+    print(f"----------------------\n")
+
+    return jsonify({
+        'message': 'Doctor added successfully!',
+        'generated_password': raw_password
+    }), 201
 
 @app.route('/api/admin/doctor/<int:doctor_id>', methods=['PUT'])
 @admin_required
@@ -193,7 +292,43 @@ def update_doctor(doctor_id):
         doctor.availability = data['availability']
     
     db.session.commit()
+    
+    cache.clear() # Clears deep lookup caches
+    print("[CACHE] Doctor profile updated. Global cache cleared.")
+    
     return jsonify({'message': 'Doctor updated successfully'}), 200
+
+@app.route('/api/admin/doctors', methods=['GET'])
+@admin_required
+def get_all_doctors():
+    """Admin only: Get a list of all doctors."""
+    doctors = Doctor.query.all()
+    results = [{
+        'id': doc.id,
+        'user_id': doc.user.id,
+        'name': doc.user.username,
+        'specialization': doc.specialization,
+        'department': doc.department.name if doc.department else 'N/A',
+        'availability': doc.availability
+    } for doc in doctors]
+    return jsonify(results), 200
+
+@app.route('/api/admin/doctor/<int:doctor_id>', methods=['GET'])
+@admin_required
+def get_doctor(doctor_id):
+    """Admin only: Get a single doctor's details."""
+    doc = Doctor.query.get(doctor_id)
+    if not doc:
+        return jsonify({'message': 'Doctor not found'}), 404
+        
+    return jsonify({
+        'id': doc.id,
+        'name': doc.user.username,
+        'email': doc.user.email,
+        'specialization': doc.specialization,
+        'department': doc.department.name if doc.department else 'N/A',
+        'availability': doc.availability
+    }), 200
 
 @app.route('/api/admin/doctors/search', methods=['GET'])
 @admin_required
@@ -235,11 +370,45 @@ def view_all_appointments():
         'doctor': appt.doctor.user.username,
         'patient': appt.patient.user.username,
         'date': str(appt.date),
-        'time': str(appt.time),
+        'time_slot': appt.time_slot,
         'status': appt.status
     } for appt in appointments]
     
     return jsonify(results), 200
+
+@app.route('/api/admin/appointment/<int:appointment_id>', methods=['PUT'])
+@admin_required
+def update_appointment(appointment_id):
+    """Admin: Update an appointment (e.g., status, doctor, date/time)."""
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
+        return jsonify({'message': 'Appointment not found'}), 404
+        
+    data = request.get_json()
+    
+    if 'status' in data:
+        appt.status = data['status']
+    if 'doctor_id' in data:
+        appt.doctor_id = data['doctor_id']
+    if 'date' in data:
+        appt.date = datetime.strptime(data['date'], '%Y-%m-%d').date()
+    if 'time_slot' in data:
+        appt.time_slot = data['time_slot']
+        
+    db.session.commit()
+    return jsonify({'message': 'Appointment updated successfully'}), 200
+
+@app.route('/api/admin/appointment/<int:appointment_id>', methods=['DELETE'])
+@admin_required
+def delete_appointment(appointment_id):
+    """Admin: Cancel/Delete an appointment."""
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
+        return jsonify({'message': 'Appointment not found'}), 404
+        
+    db.session.delete(appt)
+    db.session.commit()
+    return jsonify({'message': 'Appointment deleted successfully'}), 200
 
 @app.route('/api/admin/user/<int:user_id>', methods=['DELETE'])
 @admin_required
@@ -254,71 +423,498 @@ def remove_user(user_id):
 
     db.session.delete(user)
     db.session.commit()
+    
+    cache.clear()
+    print("[CACHE] Admin deleted a user. Global cache cleared.")
+    
     return jsonify({'message': f'User {user.username} has been removed from the system'}), 200
 
 #Doctor Functions
 
-@app.route('/api/doctor/appointments', methods=['GET'])
+@app.route('/api/doctor/dashboard', methods=['GET'])
 @doctor_required
-def get_doctor_appointments():
-    """Doctor views their assigned appointments."""
-    user_id = get_jwt_identity() # Get logged-in doctor's ID
+def get_doctor_dashboard():
+    """Doctor dashboard: upcoming appointments for the week."""
+    user_id = get_jwt_identity()
     doctor = Doctor.query.filter_by(user_id=user_id).first()
     
-    appointments = Appointment.query.filter_by(doctor_id=doctor.id).all()
+    today = datetime.now().date()
+    end_of_week = today + timedelta(days=7)
+    
+    upcoming = Appointment.query.filter(
+        Appointment.doctor_id == doctor.id,
+        Appointment.date >= today,
+        Appointment.date <= end_of_week,
+        Appointment.status != 'Cancelled'
+    ).order_by(Appointment.date.asc(), Appointment.time_slot.asc()).all()
+    
     return jsonify([{
         'id': a.id,
         'patient_name': a.patient.user.username,
         'date': str(a.date),
+        'time_slot': a.time_slot,
         'status': a.status
-    } for a in appointments]), 200
+    } for a in upcoming]), 200
 
-@app.route('/api/doctor/complete-visit', methods=['POST'])
+@app.route('/api/doctor/patients', methods=['GET'])
 @doctor_required
-def complete_visit():
-    """Doctor marks visit as completed and adds notes."""
-    data = request.get_json()
-    appt = Appointment.query.get(data['appointment_id'])
+def get_assigned_patients():
+    """List patients assigned to this doctor."""
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
     
-    if appt:
-        appt.status = 'Completed'
-        # Add treatment record
+    # Patients who have an appointment with this doctor
+    patients = Patient.query.join(Appointment).filter(Appointment.doctor_id == doctor.id).distinct().all()
+    
+    return jsonify([{
+        'patient_id': p.id,
+        'name': p.user.username,
+        'contact': p.contact
+    } for p in patients]), 200
+
+@app.route('/api/doctor/appointment/<int:appointment_id>', methods=['PATCH'])
+@doctor_required
+def update_appointment_status(appointment_id):
+    """Mark appointment as completed or cancelled."""
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
+    
+    appt = Appointment.query.filter_by(id=appointment_id, doctor_id=doctor.id).first()
+    if not appt:
+        return jsonify({'message': 'Appointment not found or not assigned to you'}), 404
+        
+    data = request.get_json()
+    if 'status' in data:
+        if data['status'] not in ['Booked', 'Completed', 'Cancelled']:
+            return jsonify({'message': 'Invalid status'}), 400
+        appt.status = data['status']
+        db.session.commit()
+        return jsonify({'message': f'Appointment marked as {appt.status}'}), 200
+        
+    return jsonify({'message': 'No status provided'}), 400
+
+@app.route('/api/doctor/treatment', methods=['POST'])
+@doctor_required
+def add_treatment():
+    """Save diagnosis and prescriptions to patient history."""
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
+    
+    data = request.get_json()
+    appt_id = data.get('appointment_id')
+    
+    appt = Appointment.query.filter_by(id=appt_id, doctor_id=doctor.id).first()
+    if not appt:
+        return jsonify({'message': 'Appointment not found or not assigned to you'}), 404
+        
+    # Check if treatment already exists
+    if appt.treatment:
+         appt.treatment.diagnosis = data.get('diagnosis', appt.treatment.diagnosis)
+         appt.treatment.prescription = data.get('prescription', appt.treatment.prescription)
+         appt.treatment.notes = data.get('notes', appt.treatment.notes)
+    else:
         new_treatment = Treatment(
             appointment_id=appt.id,
-            diagnosis=data['diagnosis'],
-            prescription=data['prescription']
+            diagnosis=data.get('diagnosis'),
+            prescription=data.get('prescription'),
+            notes=data.get('notes')
         )
         db.session.add(new_treatment)
+        
+    appt.status = 'Completed' # automatically complete appointment
+    db.session.commit()
+    return jsonify({'message': 'Treatment saved successfully!'}), 201
+
+@app.route('/api/doctor/availability', methods=['PUT'])
+@doctor_required
+def update_doctor_availability():
+    """Doctor sets their own availability string."""
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
+    data = request.get_json()
+    
+    if 'availability' in data:
+        doctor.availability = data['availability']
         db.session.commit()
-        return jsonify({'message': 'Visit record saved!'}), 200
+        
+        # Invalidate related caches
+        cache.delete(f"doctor_{doctor.id}_availability")
+        cache.clear() # Clear global search cache so availability updates there too
+        print(f"\n[CACHE] Doctor {doctor.id} updated their availability. Caches wiped.\n")
+        
+        return jsonify({'message': 'Availability updated successfully!'}), 200
+        
+    return jsonify({'message': 'No availability provided.'}), 400
+
+
     
 # patient functions
 
-@app.route('/api/patient/book', methods=['POST'])
+@app.route('/api/patient/profile', methods=['PUT'])
+@patient_required
+def update_patient_profile():
+    """Patient updates their own contact or address info."""
+    user_id = get_jwt_identity()
+    patient = Patient.query.filter_by(user_id=user_id).first()
+    data = request.get_json()
+    
+    updated = False
+    if 'contact' in data:
+        patient.contact = data['contact']
+        updated = True
+    if 'address' in data:
+        patient.address = data['address']
+        updated = True
+        
+    if updated:
+        db.session.commit()
+        return jsonify({'message': 'Profile updated successfully!'}), 200
+        
+    return jsonify({'message': 'No valid fields provided to update.'}), 400
+
+@app.route('/api/patient/doctors/search', methods=['GET'])
+@patient_required
+def patient_search_doctors():
+    """Search doctors by specialization or name."""
+    query = request.args.get('q', '')
+    
+    cache_key = f"patient_search_docs_{query}"
+    cached_results = cache.get(cache_key)
+    if cached_results is not None:
+        print(f"\n[CACHE HIT] Loaded Patient Search '{query}' from Redis memory instantly!\n")
+        return jsonify(cached_results), 200
+        
+    print(f"\n[CACHE MISS] Deep scanning slow database for search '{query}'...\n")
+    
+    doctors = Doctor.query.join(User).filter(
+        (Doctor.specialization.ilike(f'%{query}%')) | 
+        (User.username.ilike(f'%{query}%'))
+    ).all()
+    
+    results = [{
+        'id': doc.id, 
+        'name': doc.user.username, 
+        'specialization': doc.specialization,
+        'department': doc.department.name if doc.department else 'N/A',
+        'availability': doc.availability
+    } for doc in doctors]
+    
+    cache.set(cache_key, results, timeout=3600) # 1 hour
+    return jsonify(results), 200
+
+@app.route('/api/doctor/<int:doctor_id>/availability', methods=['GET'])
+@patient_required
+def get_doctor_availability(doctor_id):
+    """View a single doctor's availability (Cached)."""
+    cache_key = f"doctor_{doctor_id}_availability"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        print(f"\n[CACHE HIT] Delivering Doctor {doctor_id} availability perfectly from Redis!\n")
+        return jsonify(cached), 200
+        
+    print(f"\n[CACHE MISS] Querying database for Doctor {doctor_id} availability...\n")
+    doc = Doctor.query.get(doctor_id)
+    if not doc:
+        return jsonify({'message': 'Doctor not found'}), 404
+        
+    results = {
+        'id': doc.id,
+        'name': doc.user.username,
+        'specialization': doc.specialization,
+        'availability': doc.availability
+    }
+    cache.set(cache_key, results, timeout=600) # 10 minutes
+    return jsonify(results), 200
+
+@app.route('/api/patient/appointments/book', methods=['POST'])
 @patient_required
 def book_appointment():
-    """Patient books a new appointment."""
+    """Patient books a new appointment. Checks doctor availability."""
     data = request.get_json()
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
     
-    # Convert string date/time from frontend to Python objects
-    from datetime import datetime
     appt_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-    appt_time = datetime.strptime(data['time'], '%H:%M').time()
+    time_slot = data['time_slot']
+    doctor_id = data['doctor_id']
+
+    # Crucial logic: Check if Doctor is available at that date and time_slot
+    existing_appt = Appointment.query.filter_by(
+        doctor_id=doctor_id, 
+        date=appt_date, 
+        time_slot=time_slot
+    ).filter(Appointment.status != 'Cancelled').first()
+
+    if existing_appt:
+        return jsonify({'message': 'Time slot already taken'}), 400
 
     new_appt = Appointment(
-        doctor_id=data['doctor_id'],
+        doctor_id=doctor_id,
         patient_id=patient.id,
         date=appt_date,
-        time=appt_time,
+        time_slot=time_slot,
         status='Booked'
     )
     db.session.add(new_appt)
     db.session.commit()
-    return jsonify({'message': 'Appointment Booked!'}), 201     
+    
+    # Invalidate that specific Doctor's availability cache dynamically
+    cache.delete(f"doctor_{doctor_id}_availability")
+    print(f"\n[CACHE] Cleared availability cache for Doctor {doctor_id} due to new booking.\n")
+    
+    return jsonify({'message': 'Appointment successfully booked!'}), 201
+
+@app.route('/api/patient/appointment/<int:appointment_id>', methods=['PATCH'])
+@patient_required
+def manage_patient_appointment(appointment_id):
+    """Patient reschedules or cancels their own appointment."""
+    user_id = get_jwt_identity()
+    patient = Patient.query.filter_by(user_id=user_id).first()
+    
+    appt = Appointment.query.filter_by(id=appointment_id, patient_id=patient.id).first()
+    if not appt:
+        return jsonify({'message': 'Appointment not found.'}), 404
+        
+    data = request.get_json()
+    
+    status = data.get('status')
+    if status == 'Cancelled':
+        appt.status = 'Cancelled'
+        
+    new_date = data.get('date')
+    new_time_slot = data.get('time_slot')
+    
+    # Rescheduling
+    if new_date and new_time_slot:
+        parsed_date = datetime.strptime(new_date, '%Y-%m-%d').date()
+        
+        # Check availability again if changing schedule
+        conflict = Appointment.query.filter(
+            Appointment.doctor_id == appt.doctor_id,
+            Appointment.date == parsed_date,
+            Appointment.time_slot == new_time_slot,
+            Appointment.id != appt.id,
+            Appointment.status != 'Cancelled'
+        ).first()
+
+        if conflict:
+            return jsonify({'message': 'Time slot already taken'}), 400
+            
+        appt.date = parsed_date
+        appt.time_slot = new_time_slot
+        appt.status = 'Booked' # resetting status upon reschedule
+        
+    db.session.commit()
+    return jsonify({'message': 'Appointment updated successfully.'}), 200
+
+@app.route('/api/patient/history', methods=['GET'])
+@patient_required
+def get_patient_history_self():
+    """Return upcoming and past appointments including diagnosis and prescription."""
+    user_id = get_jwt_identity()
+    patient = Patient.query.filter_by(user_id=user_id).first()
+    
+    results = []
+    # Fetch all, sorted chronologically
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
+    
+    for appt in appts:
+        appt_data = {
+            'id': appt.id,
+            'doctor_name': appt.doctor.user.username,
+            'specialization': appt.doctor.specialization,
+            'date': str(appt.date),
+            'time_slot': appt.time_slot,
+            'status': appt.status,
+            'treatment': None
+        }
+        
+        if appt.treatment:
+            appt_data['treatment'] = {
+                'diagnosis': appt.treatment.diagnosis,
+                'prescription': appt.treatment.prescription,
+                'notes': appt.treatment.notes
+            }
+        results.append(appt_data)
+        
+    return jsonify(results), 200
+
+@app.route('/api/patient/<int:patient_id>/history', methods=['GET'])
+@jwt_required()
+def cross_role_patient_history(patient_id):
+    """Retrieve history. Patient sees theirs, Doctor sees assigned, Admin sees all."""
+    claims = get_jwt()
+    user_role = claims.get('role')
+    user_id = int(get_jwt_identity())
+    
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        return jsonify({'message': 'Patient not found'}), 404
+
+    has_access = False
+    if user_role == 'Admin':
+        has_access = True
+    elif user_role == 'Doctor':
+        doctor = Doctor.query.filter_by(user_id=user_id).first()
+        if Appointment.query.filter_by(doctor_id=doctor.id, patient_id=patient_id).first():
+            has_access = True
+    elif user_role == 'Patient':
+        if patient.user_id == user_id:
+            has_access = True
+            
+    if not has_access:
+        return jsonify({'message': 'Access forbidden'}), 403
+        
+    history = []
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
+    for appt in appts:
+        appt_data = {
+            'date': str(appt.date),
+            'time_slot': appt.time_slot,
+            'doctor_name': appt.doctor.user.username,
+            'specialization': appt.doctor.specialization,
+            'status': appt.status,
+            'treatment': None
+        }
+        if appt.treatment:
+            appt_data['treatment'] = {
+                'diagnosis': appt.treatment.diagnosis,
+                'prescription': appt.treatment.prescription,
+                'notes': appt.treatment.notes
+            }
+        history.append(appt_data)
+        
+    return jsonify({
+        'patient_name': patient.user.username,
+        'history': history
+    }), 200
+
+@app.route('/api/patient/export-history', methods=['POST'])
+@patient_required
+def trigger_export():
+    """Trigger the async CSV export task."""
+    user_id = get_jwt_identity()
+    patient = Patient.query.filter_by(user_id=user_id).first()
+    
+    # Launch async task
+    export_treatment_csv.delay(patient.id)
+    
+    return jsonify({'message': 'Job Started: Your CSV export is being generated in the background. You will receive an alert once completed!'}), 202
+
+@app.route('/api/appointments/<int:appointment_id>/status', methods=['PATCH'])
+@jwt_required()
+def update_shared_appointment_status(appointment_id):
+    """Update status of appointment to Booked, Completed, Cancelled."""
+    claims = get_jwt()
+    user_role = claims.get('role')
+    user_id = int(get_jwt_identity())
+    
+    appt = Appointment.query.get(appointment_id)
+    if not appt:
+        return jsonify({'message': 'Appointment not found'}), 404
+        
+    data = request.get_json()
+    new_status = data.get('status')
+    if new_status not in ['Booked', 'Completed', 'Cancelled']:
+        return jsonify({'message': 'Invalid status'}), 400
+
+    has_access = False
+    if user_role == 'Admin':
+        has_access = True
+    elif user_role == 'Doctor':
+        doctor = Doctor.query.filter_by(user_id=user_id).first()
+        if appt.doctor_id == doctor.id:
+            has_access = True
+    elif user_role == 'Patient':
+        patient = Patient.query.filter_by(user_id=user_id).first()
+        if appt.patient_id == patient.id:
+            if new_status == 'Cancelled':
+                has_access = True
+            else:
+                return jsonify({'message': 'Patients can only Cancel appointments.'}), 403
+
+    if not has_access:
+        return jsonify({'message': 'Access forbidden'}), 403
+        
+    appt.status = new_status
+    db.session.commit()
+    return jsonify({'message': f'Appointment updated to {new_status}'}), 200
+
 # ==========================================
-# 4. START THE SERVER
+# 5. BACKGROUND TASKS (CELERY & REDIS)
+# ==========================================
+
+@celery.task(name='app.send_daily_reminders')
+def send_daily_reminders():
+    """Run every morning: Print reminder for today's appointments."""
+    today = datetime.now().date()
+    appointments = Appointment.query.filter_by(date=today, status='Booked').all()
+    for appt in appointments:
+        print(f"\n[ALERT] Reminder sent to {appt.patient.user.username}: You have an appointment today at {appt.time_slot} with Dr. {appt.doctor.user.username}!\n")
+    return f"Sent {len(appointments)} reminders."
+
+@celery.task(name='app.generate_monthly_doctor_report')
+def generate_monthly_doctor_report():
+    """Aggregate appointments/treatments for current month & generate HTML summary."""
+    today = datetime.now().date()
+    start_of_month = today.replace(day=1)
+    
+    doctors = Doctor.query.all()
+    reports_generated = 0
+    for doc in doctors:
+        appts = Appointment.query.filter(
+            Appointment.doctor_id == doc.id,
+            Appointment.date >= start_of_month,
+            Appointment.date <= today,
+            Appointment.status == 'Completed'
+        ).all()
+        
+        if not appts:
+            continue
+            
+        html_report = f"<h1>Monthly Report for Dr. {doc.user.username}</h1>\n<ul>"
+        for a in appts:
+            diag = a.treatment.diagnosis if a.treatment else "No diagnosis"
+            html_report += f"<li>{a.date}: Patient {a.patient.user.username} - {diag}</li>\n"
+        html_report += "</ul>"
+        
+        print(f"\n[REPORT] Emailing Dr. {doc.user.username}:\n{html_report}")
+        reports_generated += 1
+        
+    return f"Generated {reports_generated} monthly reports."
+
+@celery.task(name='app.export_treatment_csv')
+def export_treatment_csv(patient_id):
+    """Async Job: Generate CSV of treatment history."""
+    patient = Patient.query.get(patient_id)
+    if not patient:
+        print(f"[ERROR] Patient {patient_id} not found for export.")
+        return
+        
+    appts = Appointment.query.filter_by(patient_id=patient_id).order_by(Appointment.date.desc()).all()
+    
+    os.makedirs('exports', exist_ok=True)
+    filename = f"exports/patient_{patient_id}_history_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv"
+    
+    with open(filename, mode='w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(['Date', 'Time Slot', 'Doctor', 'Specialization', 'Diagnosis', 'Prescription', 'Notes', 'Status'])
+        
+        for appt in appts:
+            diag = appt.treatment.diagnosis if appt.treatment else ""
+            presc = appt.treatment.prescription if appt.treatment else ""
+            notes = appt.treatment.notes if appt.treatment else ""
+            
+            writer.writerow([
+                str(appt.date), appt.time_slot, appt.doctor.user.username, 
+                appt.doctor.specialization, diag, presc, notes, appt.status
+            ])
+            
+    print(f"\n[ALERT - JOB COMPLETE] CSV Export perfectly completed for {patient.user.username}! File saved at {filename}\n")
+    return filename
+
+# ==========================================
+# 6. START THE SERVER
 # ==========================================
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

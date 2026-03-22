@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Patient Dashboard</title>
+    <!-- Basic Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Basic VueJS CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+<body class="bg-light">
+<div id="app">
+    <nav class="navbar navbar-dark bg-success">
+        <div class="container-fluid">
+            <span class="navbar-brand h1 fw-bold">My Personal Medical Dashboard</span>
+            <button class="btn btn-light" @click="logout">Logout</button>
+        </div>
+    </nav>
+    
+    <div class="container mt-4">
+        <!-- Reusable HTML Alerts -->
+        <div v-if="error" class="alert alert-danger">{{ error }}</div>
+        <div v-if="success" class="alert alert-success">{{ success }}</div>
+
+        <div class="row">
+            <!-- Left Column: Search & Book -->
+            <div class="col-md-6 mb-4">
+                
+                <!-- Background CSV Extraction Button (Triggers your Celery queue!) -->
+                <button class="btn btn-warning w-100 mb-3 fw-bold" @click="exportData">
+                    📥 Download ALL My Medical History (PDF/CSV Generation)
+                </button>
+
+                <div class="card mb-4 shadow-sm border-0">
+                    <div class="card-header bg-white"><b>Update My Profile</b></div>
+                    <div class="card-body">
+                        <form @submit.prevent="updateProfile">
+                            <input type="text" class="form-control mb-2" v-model="profileForm.contact" placeholder="Update Phone Number">
+                            <input type="text" class="form-control mb-2" v-model="profileForm.address" placeholder="Update Address">
+                            <button class="btn btn-outline-success w-100">Save Changes</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card mb-4 border-0 shadow-sm">
+                    <div class="card-header bg-white"><b>1. Search for a Doctor by Name or Type</b></div>
+                    <div class="card-body">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control" v-model="searchQuery" placeholder="e.g. Heart, Bones, Smith">
+                            <button class="btn btn-outline-success" @click="searchDoctors">Hunt Database</button>
+                        </div>
+                        
+                        <!-- Search Results loop -->
+                        <ul class="list-group">
+                            <li class="list-group-item" v-for="doc in searchResults" :key="doc.id">
+                                <h5 class="mb-1">Dr. {{ doc.name }}</h5>
+                                <p class="mb-1 text-muted">{{ doc.specialization }} Department</p>
+                                <small class="text-success fw-bold">When they work: {{ doc.availability }}</small>
+                                <button class="btn btn-sm btn-success float-end mt-1" @click="targetDoctor = doc.id">Book Now Option</button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Open this simple booking form ONLY if they clicked a doctor -->
+                <div class="card" v-if="targetDoctor">
+                    <div class="card-header bg-success text-white">2. Book Specific Visit for Doc #{{ targetDoctor }}</div>
+                    <div class="card-body">
+                        <!-- HTML5 Native Calendar Form controls -->
+                        <form @submit.prevent="bookAppt">
+                            <label>Pick a Date</label>
+                            <input type="date" class="form-control mb-3" v-model="bookForm.date" required>
+                            
+                            <label>Pick a Time text/slot</label>
+                            <input type="text" class="form-control mb-3" v-model="bookForm.time_slot" placeholder="e.g. 10:00 AM" required>
+                            
+                            <button class="btn btn-dark w-100">Send Booking Request to Doc</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: History & Payment Dummy -->
+            <div class="col-md-6">
+                <div class="card mb-4 shadow-sm border-0">
+                    <div class="card-header bg-white"><b>My Historic Medical Records</b></div>
+                    
+                    <!-- Basic CSS scrollbar styling if the list gets too long -->
+                    <div class="card-body bg-light" style="max-height: 400px; overflow-y: auto;">
+                        <ul class="list-group">
+                            <li class="list-group-item mb-2" v-for="h in history" :key="h.id">
+                                <p class="mb-0">{{ h.date }} at {{ h.time_slot }} - <b>Dr. {{ h.doctor_name }}</b></p>
+                                <span class="badge" :class="h.status === 'Completed' ? 'bg-success' : 'bg-primary'">Status: {{ h.status }}</span>
+                                
+                                <!-- Read inner Python dictionary (Treatment table) if true -->
+                                <div v-if="h.treatment" class="mt-2 p-2 bg-white border border-info rounded">
+                                    <i>What they found:</i> {{ h.treatment.diagnosis }} <br>
+                                    <i>Your drugs:</i> {{ h.treatment.prescription }}
+                                </div>
+                                
+                                <!-- Action Buttons -->
+                                <button v-if="h.status === 'Completed'" class="btn btn-sm btn-outline-success mt-2 me-2" @click="openPayment">Pay $150 Bill</button>
+                                <button v-if="h.status === 'Booked'" class="btn btn-sm btn-danger mt-2" @click="cancelAppt(h.id)">Cancel Appointment</button>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- "Implement a dummy payment portal" -->
+                <div class="card border-success" v-if="showPayment">
+                    <div class="card-header bg-success text-white">Secure Dummy Payment Checkout</div>
+                    <div class="card-body">
+                        <form @submit.prevent="processPayment">
+                            <label class="form-label small">Credit Card Digits</label>
+                            <input type="text" class="form-control mb-2" placeholder="XXXX-XXXX-XXXX-XXXX" required>
+                            <div class="d-flex gap-2 mb-3">
+                                <input type="text" class="form-control" placeholder="Month/Yr" required>
+                                <input type="text" class="form-control" placeholder="Back Code" required>
+                            </div>
+                            <button class="btn btn-success w-100 fw-bold">Confirm & Pay Hospital Bill</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp } = Vue;
+
+    createApp({
+        data() { return {
+            token: localStorage.getItem('access_token'),
+            error: '', success: '', 
+            searchQuery: '', searchResults: [], targetDoctor: null,
+            bookForm: { date: '', time_slot: '' },
+            profileForm: { contact: '', address: '' },
+            history: [], showPayment: false
+        }},
+        methods: {
+            authHeader() { return { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }; },
+            logout() { localStorage.clear(); window.location.href = 'index.html'; },
+            async fetchHistory() {
+                // Fetch the medical data mapping from the secure python route
+                const res = await fetch('http://127.0.0.1:5000/api/patient/history', { headers: this.authHeader() });
+                if(res.ok) this.history = await res.json();
+            },
+            async searchDoctors() {
+                this.error = '';
+                // The URL query string hitting the python search endpoint
+                const res = await fetch('http://127.0.0.1:5000/api/patient/doctors/search?q=' + this.searchQuery, { headers: this.authHeader() });
+                if(res.ok) this.searchResults = await res.json();
+            },
+            async bookAppt() {
+                const payload = { doctor_id: this.targetDoctor, ...this.bookForm };
+                const res = await fetch('http://127.0.0.1:5000/api/patient/appointments/book', {
+                    method: 'POST', headers: this.authHeader(), body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                
+                if(res.ok) { 
+                    this.success = "Booked successfully and Doctor has been alerted!"; 
+                    this.targetDoctor = null; 
+                    this.fetchHistory(); // Reload visual data
+                } else { 
+                    this.error = data.message; // 400 Bad Request error if Time Slot exists!
+                }
+            },
+            openPayment() { this.showPayment = true; },
+            processPayment() { 
+                this.success = "Dummy transaction passed! Your balance is now $0."; 
+                this.showPayment = false; 
+            },
+            async exportData() {
+                // Call the python route. Because the python route uses `export_treatment_csv.delay()`, 
+                // this Javascript fetch finishes instantly!
+                const res = await fetch('http://127.0.0.1:5000/api/patient/export-history', { method:'POST', headers: this.authHeader()});
+                if(res.ok) this.success = "Success! The Celery worker is currently compiling your CSV document in the background. It will show up in the python exports/ folder momentarily!";
+            },
+            async updateProfile() {
+                const res = await fetch('http://127.0.0.1:5000/api/patient/profile', {
+                    method: 'PUT', headers: this.authHeader(), body: JSON.stringify(this.profileForm)
+                });
+                if(res.ok) { this.success = "Profile completely updated in the Database!"; this.profileForm = {contact:'', address:''}; }
+            },
+            async cancelAppt(id) {
+                if(confirm("Are you sure you want to cancel this appointment?")) {
+                    const res = await fetch('http://127.0.0.1:5000/api/patient/appointment/' + id, {
+                        method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: 'Cancelled' })
+                    });
+                    if(res.ok) { this.success = "Appointment instantly cancelled!"; this.fetchHistory(); }
+                }
+            }
+        },
+        mounted() {
+            // Force user back to index.html if they try to access this without a JWT token!
+            if(!this.token || localStorage.getItem('role') !== 'Patient') this.logout();
+            else this.fetchHistory();
+        }
+    }).mount('#app');
+</script>
+</body>
+</html>
