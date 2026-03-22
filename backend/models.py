@@ -1,7 +1,5 @@
 import uuid
 from flask_sqlalchemy import SQLAlchemy
-from flask_security import UserMixin, RoleMixin
-
 db = SQLAlchemy()
 
 # Association table for Flask-Security Roles
@@ -11,13 +9,13 @@ roles_users = db.Table(
     db.Column('role_id', db.Integer(), db.ForeignKey('roles.id'))
 )
 
-class Role(db.Model, RoleMixin):
+class Role(db.Model):
     __tablename__ = 'roles'
     id = db.Column(db.Integer(), primary_key=True)
     name = db.Column(db.String(80), unique=True)
     description = db.Column(db.String(255))
 
-class User(db.Model, UserMixin):
+class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), unique=True, nullable=False)
