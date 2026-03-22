@@ -47,7 +47,7 @@ class Doctor(db.Model):
     specialization = db.Column(db.String(100))
     availability = db.Column(db.String(255))
     
-    appointments = db.relationship('Appointment', backref='doctor', lazy=True)
+    appointments = db.relationship('Appointment', backref='doctor', lazy=True, cascade='all, delete-orphan')
 
 class Patient(db.Model):
     __tablename__ = 'patients'
@@ -56,7 +56,7 @@ class Patient(db.Model):
     contact = db.Column(db.String(15))
     address = db.Column(db.String(255))
     
-    appointments = db.relationship('Appointment', backref='patient', lazy=True)
+    appointments = db.relationship('Appointment', backref='patient', lazy=True, cascade='all, delete-orphan')
 
 class Appointment(db.Model):
     __tablename__ = 'appointments'
