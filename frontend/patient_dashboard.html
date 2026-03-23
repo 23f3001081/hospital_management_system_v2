@@ -53,7 +53,7 @@
                         <!-- Search Results loop -->
                         <ul class="list-group">
                             <li class="list-group-item" v-for="doc in searchResults" :key="doc.id">
-                                <h5 class="mb-1">Dr. {{ doc.name }}</h5>
+                                <h5 class="mb-1">{{ doc.name }}</h5>
                                 <p class="mb-1 text-muted">{{ doc.specialization }} Department</p>
                                 <small class="text-success fw-bold">When they work: {{ doc.availability }}</small>
                                 <button class="btn btn-sm btn-success float-end mt-1" @click="targetDoctor = doc.id">Book Now Option</button>
@@ -89,7 +89,7 @@
                     <div class="card-body bg-light" style="max-height: 400px; overflow-y: auto;">
                         <ul class="list-group">
                             <li class="list-group-item mb-2" v-for="h in history" :key="h.id">
-                                <p class="mb-0">{{ h.date }} at {{ h.time_slot }} - <b>Dr. {{ h.doctor_name }}</b></p>
+                                <p class="mb-0">{{ h.date }} at {{ h.time_slot }} - <b>{{ h.doctor_name }}</b></p>
                                 <span class="badge" :class="h.status === 'Completed' ? 'bg-success' : 'bg-primary'">Status: {{ h.status }}</span>
                                 
                                 <!-- Read inner Python dictionary (Treatment table) if true -->
@@ -100,9 +100,28 @@
                                 
                                 <!-- Action Buttons -->
                                 <button v-if="h.status === 'Completed'" class="btn btn-sm btn-outline-success mt-2 me-2" @click="openPayment">Pay $150 Bill</button>
+                                <button v-if="h.status === 'Booked'" class="btn btn-sm btn-warning mt-2 me-2" @click="openReschedule(h)">Reschedule</button>
                                 <button v-if="h.status === 'Booked'" class="btn btn-sm btn-danger mt-2" @click="cancelAppt(h.id)">Cancel Appointment</button>
                             </li>
                         </ul>
+                    </div>
+                </div>
+
+                <!-- Reschedule Form UI -->
+                <div class="card border-warning mb-4" v-if="rescheduleData">
+                    <div class="card-header bg-warning text-dark fw-bold">Reschedule Appointment with {{ rescheduleData.doctor_name }}</div>
+                    <div class="card-body">
+                        <form @submit.prevent="submitReschedule">
+                            <label>Pick a New Date</label>
+                            <input type="date" class="form-control mb-3" v-model="rescheduleForm.date" required>
+                            
+                            <label>Pick a New Time Slot</label>
+                            <input type="text" class="form-control mb-3" v-model="rescheduleForm.time_slot" placeholder="e.g. 10:00 AM" required>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-warning w-100 fw-bold">Confirm Reschedule</button>
+                                <button type="button" class="btn btn-secondary w-100" @click="rescheduleData = null">Cancel</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
 
@@ -136,7 +155,8 @@
             searchQuery: '', searchResults: [], targetDoctor: null,
             bookForm: { date: '', time_slot: '' },
             profileForm: { contact: '', address: '' },
-            history: [], showPayment: false
+            history: [], showPayment: false,
+            rescheduleData: null, rescheduleForm: { date: '', time_slot: '' }
         }},
         methods: {
             authHeader() { return { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }; },
@@ -183,6 +203,30 @@
                     method: 'PUT', headers: this.authHeader(), body: JSON.stringify(this.profileForm)
                 });
                 if(res.ok) { this.success = "Profile completely updated in the Database!"; this.profileForm = {contact:'', address:''}; }
+            },
+            openReschedule(h) {
+                this.rescheduleData = h;
+                this.rescheduleForm.date = h.date;
+                this.rescheduleForm.time_slot = h.time_slot;
+                this.error = ''; this.success = '';
+            },
+            async submitReschedule() {
+                const res = await fetch('http://127.0.0.1:5000/api/patient/appointment/' + this.rescheduleData.id, {
+                    method: 'PATCH',
+                    headers: this.authHeader(),
+                    body: JSON.stringify({ 
+                        date: this.rescheduleForm.date, 
+                        time_slot: this.rescheduleForm.time_slot 
+                    })
+                });
+                if(res.ok) {
+                    this.success = "Appointment successfully rescheduled!";
+                    this.rescheduleData = null;
+                    this.fetchHistory();
+                } else {
+                    const data = await res.json();
+                    this.error = "Error: " + data.message;
+                }
             },
             async cancelAppt(id) {
                 if(confirm("Are you sure you want to cancel this appointment?")) {

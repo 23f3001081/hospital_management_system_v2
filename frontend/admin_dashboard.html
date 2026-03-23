@@ -71,6 +71,8 @@
                                     placeholder="Doctor Name" required></div>
                             <div class="col"><input type="email" class="form-control" v-model="newDoc.email"
                                     placeholder="Email Address" required></div>
+                            <div class="col"><input type="password" class="form-control" v-model="newDoc.password"
+                                    placeholder="Password (manual)" required></div>
                             <div class="col">
                                 <select class="form-select" v-model="newDoc.department_name" required>
                                     <option value="" disabled selected>Select Department</option>
@@ -91,6 +93,17 @@
                                     <option value="Dermatologist">Dermatologist</option>
                                     <option value="Pediatrician">Pediatrician</option>
                                     <option value="Oncologist">Oncologist</option>
+                                </select>
+                            </div>
+                            <div class="col">
+                                <select class="form-select" v-model="newDoc.availability" required>
+                                    <option value="" disabled selected>Availability (Mon-Sat)</option>
+                                    <option value="Monday">Monday</option>
+                                    <option value="Tuesday">Tuesday</option>
+                                    <option value="Wednesday">Wednesday</option>
+                                    <option value="Thursday">Thursday</option>
+                                    <option value="Friday">Friday</option>
+                                    <option value="Saturday">Saturday</option>
                                 </select>
                             </div>
                             <div class="col-auto"><button type="submit" class="btn btn-primary">Save Doctor
@@ -116,7 +129,10 @@
                 <tbody>
                     <tr v-for="doc in doctors" :key="doc.id">
                         <td>{{ doc.id }}</td>
-                        <td><b>Dr. {{ doc.name }}</b> <br><small>User ID: {{ doc.user_id }}</small></td>
+                        <td>
+                            <input type="text" class="form-control form-control-sm mb-1" v-model="doc.name">
+                            <small>User ID: {{ doc.user_id }}</small>
+                        </td>
                         <td>{{ doc.department }}</td>
                         <td>
                             <select class="form-select form-select-sm" v-model="doc.specialization">
@@ -130,12 +146,19 @@
                             </select>
                         </td>
                         <td>
-                            <input type="text" class="form-control form-control-sm" v-model="doc.availability"
-                                placeholder="e.g. Mon-Fri">
+                            <select class="form-select form-select-sm" v-model="doc.availability">
+                                <option value="" disabled>Select Day</option>
+                                <option value="Monday">Monday</option>
+                                <option value="Tuesday">Tuesday</option>
+                                <option value="Wednesday">Wednesday</option>
+                                <option value="Thursday">Thursday</option>
+                                <option value="Friday">Friday</option>
+                                <option value="Saturday">Saturday</option>
+                            </select>
                         </td>
                         <td>
                             <button class="btn btn-sm btn-success me-1 mb-1"
-                                @click="updateDoctor(doc.id, doc.specialization, doc.availability)">Save
+                                @click="updateDoctor(doc.id, doc.name, doc.specialization, doc.availability)">Save
                                 Profile</button>
                             <button class="btn btn-sm btn-danger mb-1" @click="removeUser(doc.user_id)">Remove Profile
                             </button>
@@ -144,8 +167,48 @@
                 </tbody>
             </table>
 
+            <!-- Search UI -->
+            <h3 class="mt-4">Search System</h3>
+            <div class="row mb-4">
+                <div class="col-md-6 mb-2">
+                    <div class="input-group">
+                        <input type="text" class="form-control" v-model="searchDocQuery"
+                            placeholder="Search Doctors...">
+                        <button class="btn btn-outline-primary" @click="searchDoctors">Search</button>
+                    </div>
+                    <ul class="list-group mt-2" v-if="docSearchResults.length">
+                        <li class="list-group-item" v-for="d in docSearchResults" :key="d.id">
+                            <strong>{{ d.name }}</strong> - {{ d.specialization }}
+                        </li>
+                    </ul>
+                </div>
+                <div class="col-md-6 mb-2">
+                    <div class="input-group">
+                        <input type="text" class="form-control" v-model="searchPatQuery"
+                            placeholder="Search Patients by Name/ID/Contact...">
+                        <button class="btn btn-outline-primary" @click="searchPatients">Search</button>
+                    </div>
+                    <ul class="list-group mt-2" v-if="patSearchResults.length">
+                        <li class="list-group-item" v-for="p in patSearchResults" :key="p.id">
+                            <strong>{{ p.name }}</strong> - Contact: {{ p.contact }}
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
             <!-- View All Appointments Table -->
-            <h3 class="mt-5">All Booked Appointments</h3>
+            <h3 class="mt-5">Booked Appointments</h3>
+            <div class="d-flex gap-2 mb-2 align-items-center">
+                <label class="mb-0"><strong>Show:</strong></label>
+                <select class="form-select form-select-sm w-auto" v-model="appointmentFilter">
+                    <option value="All">All</option>
+                    <option value="Booked">Booked</option>
+                    <option value="Completed">Completed</option>
+                    <option value="Cancelled">Cancelled</option>
+                </select>
+                <button class="btn btn-outline-secondary btn-sm" @click="appointmentFilter='Booked'">Booked
+                    only</button>
+            </div>
             <table class="table table-bordered bg-white">
                 <thead class="table-dark">
                     <tr>
@@ -159,14 +222,19 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <tr v-for="appt in appointments" :key="appt.id">
+                    <tr v-for="appt in filteredAppointments" :key="appt.id">
                         <td>{{ appt.id }}</td>
                         <td>{{ appt.doctor }}</td>
                         <td>{{ appt.patient }}</td>
                         <td>{{ appt.date }}</td>
                         <td>{{ appt.time_slot }}</td>
                         <td><b>{{ appt.status }}</b></td>
-                        <td><button class="btn btn-sm btn-danger" @click="deleteAppt(appt.id)">Erase Record</button>
+                        <td class="d-flex gap-1 flex-wrap">
+                            <button v-if="appt.status !== 'Completed'" class="btn btn-sm btn-success"
+                                @click="updateAppointmentStatus(appt.id, 'Completed')">Mark Completed</button>
+                            <button v-if="appt.status !== 'Cancelled'" class="btn btn-sm btn-warning"
+                                @click="updateAppointmentStatus(appt.id, 'Cancelled')">Cancel</button>
+                            <button class="btn btn-sm btn-danger" @click="deleteAppt(appt.id)">Erase</button>
                         </td>
                     </tr>
                 </tbody>
@@ -182,9 +250,12 @@
                     token: localStorage.getItem('access_token'),
                     error: '', success: '',
                     stats: { total_patients: 0, total_doctors: 0, total_appointments: 0 },
-                    newDoc: { username: '', email: '', specialization: '', department_name: '' },
+                    newDoc: { username: '', email: '', password: '', specialization: '', department_name: '', availability: '' },
                     appointments: [],
-                    doctors: []
+                    doctors: [],
+                    appointmentFilter: 'Booked',
+                    searchDocQuery: '', docSearchResults: [],
+                    searchPatQuery: '', patSearchResults: []
                 }
             },
             methods: {
@@ -226,15 +297,23 @@
                 },
                 async addDoctor() {
                     try {
+                        const payload = {
+                            username: this.newDoc.username,
+                            email: this.newDoc.email,
+                            password: this.newDoc.password,
+                            specialization: this.newDoc.specialization,
+                            department_name: this.newDoc.department_name,
+                            availability: this.newDoc.availability
+                        };
                         const res = await fetch('http://127.0.0.1:5000/api/admin/doctor', {
-                            method: 'POST', headers: this.authHeader(), body: JSON.stringify(this.newDoc)
+                            method: 'POST', headers: this.authHeader(), body: JSON.stringify(payload)
                         });
                         const data = await res.json();
                         // Alert the Admin visually and reset the form
                         if (res.ok) {
                             this.success = "Success! Give the doctor this temporary password: " + data.generated_password;
                             alert("DOCTOR SAVED SUCCESSFULLY!\n\nEmail: " + this.newDoc.email + "\nTemporary Password: " + data.generated_password);
-                            this.newDoc = { username: '', email: '', specialization: '', department_name: '' };
+                            this.newDoc = { username: '', email: '', specialization: '', department_name: '', availability: '' };
                             this.fetchData();
                         }
                         else if (res.status === 401) {
@@ -251,14 +330,24 @@
                     }
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 },
-                async updateDoctor(doc_id, spec, avail) {
+                async updateDoctor(doc_id, name, spec, avail) {
                     try {
                         const res = await fetch('http://127.0.0.1:5000/api/admin/doctor/' + doc_id, {
-                            method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ specialization: spec, availability: avail })
+                            method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ name: name, specialization: spec, availability: avail })
                         });
                         if (res.ok) { this.success = "Doctor profile instantly updated via DB!"; this.fetchData(); }
                         else { const data = await res.json(); this.error = data.message; }
                     } catch (e) { this.error = "Network error during PUT request."; }
+                },
+                async searchDoctors() {
+                    if (!this.searchDocQuery) return;
+                    const res = await fetch('http://127.0.0.1:5000/api/admin/doctors/search?q=' + this.searchDocQuery, { headers: this.authHeader() });
+                    if (res.ok) this.docSearchResults = await res.json();
+                },
+                async searchPatients() {
+                    if (!this.searchPatQuery) return;
+                    const res = await fetch('http://127.0.0.1:5000/api/admin/patients/search?q=' + this.searchPatQuery, { headers: this.authHeader() });
+                    if (res.ok) this.patSearchResults = await res.json();
                 },
                 async removeUser(user_id) {
                     if (confirm("DANGER: Permanently revoke this doctor's auth and delete their hospital profile? This cannot be undone.")) {
@@ -272,6 +361,24 @@
                         await fetch('http://127.0.0.1:5000/api/admin/appointment/' + id, { method: 'DELETE', headers: this.authHeader() });
                         this.fetchData(); // reload
                     }
+                },
+                async updateAppointmentStatus(id, status) {
+                    const res = await fetch('http://127.0.0.1:5000/api/appointments/' + id + '/status', {
+                        method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: status })
+                    });
+                    if (res.ok) {
+                        this.success = 'Appointment status updated successfully!';
+                        this.fetchData();
+                    } else {
+                        const data = await res.json();
+                        this.error = data.message || 'Failed to update appointment status';
+                    }
+                }
+            },
+            computed: {
+                filteredAppointments() {
+                    if (this.appointmentFilter === 'All') return this.appointments;
+                    return this.appointments.filter(a => a.status === this.appointmentFilter);
                 }
             },
             mounted() {

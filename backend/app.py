@@ -40,9 +40,21 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'your-super-secret-jwt-key'  # Encrypt tokens
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24) # Disable strict 15-minute expiration for development
 
+# Email configuration for notifications
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = 'your-email@gmail.com'  # Replace with actual
+app.config['MAIL_PASSWORD'] = 'your-app-password'  # Replace with app password
+app.config['MAIL_DEFAULT_SENDER'] = 'your-email@gmail.com'
+
 db.init_app(app)
 CORS(app)
 jwt = JWTManager(app)
+
+# Import mail after app config
+from flask_mail import Mail
+mail = Mail(app)
 
 # ==========================================
 # CACHING CONFIGURATION
@@ -111,6 +123,9 @@ admin_required = role_required('Admin')
 doctor_required = role_required('Doctor')
 patient_required = role_required('Patient')
 
+# Doctor availability is strictly limited to weekday values (mon-sat)
+VALID_AVAILABILITY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
 @app.route('/', methods=['GET'])
 def home():
     return jsonify({
@@ -122,7 +137,7 @@ def home():
 
 # ==========================================
 # 3. AUTHENTICATION ROUTES (Login & Register)
-# ==========================================
+# ========================================== 
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -203,15 +218,23 @@ def get_departments():
 @admin_required
 def admin_dashboard_stats():
     """Dashboard: show total patients, doctors, appointments."""
+    cache_key = "admin_dashboard_stats"
+    cached = cache.get(cache_key)
+    if cached:
+        print("\n[CACHE HIT] Admin dashboard stats loaded instantly!\n")
+        return jsonify(cached), 200
+    
     total_patients = Patient.query.count()
     total_doctors = Doctor.query.count()
     total_appointments = Appointment.query.count()
     
-    return jsonify({
+    data = {
         'total_patients': total_patients,
         'total_doctors': total_doctors,
         'total_appointments': total_appointments
-    }), 200
+    }
+    cache.set(cache_key, data, timeout=300)  # 5 minutes
+    return jsonify(data), 200
 
 @app.route('/api/admin/doctor', methods=['POST'])
 @admin_required
@@ -257,11 +280,15 @@ def add_doctor():
     db.session.flush() 
 
     # 3. Create Doctor profile linked to User and Department
+    availability_value = data.get('availability', 'Not specified')
+    if availability_value != 'Not specified' and availability_value not in VALID_AVAILABILITY_OPTIONS:
+        return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
+
     new_doctor = Doctor(
         user_id=new_user.id,
         department_id=department.id,
         specialization=data['specialization'],
-        availability=data.get('availability', 'Not specified')
+        availability=availability_value
     )
     db.session.add(new_doctor)
     db.session.commit()
@@ -289,7 +316,11 @@ def update_doctor(doctor_id):
     if 'specialization' in data:
         doctor.specialization = data['specialization']
     if 'availability' in data:
+        if data['availability'] not in VALID_AVAILABILITY_OPTIONS:
+            return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
         doctor.availability = data['availability']
+    if 'name' in data:
+        doctor.user.username = data['name']
     
     db.session.commit()
     
@@ -438,6 +469,12 @@ def get_doctor_dashboard():
     user_id = get_jwt_identity()
     doctor = Doctor.query.filter_by(user_id=user_id).first()
     
+    cache_key = f"doctor_dashboard_{doctor.id}"
+    cached = cache.get(cache_key)
+    if cached:
+        print(f"\n[CACHE HIT] Doctor {doctor.id} dashboard loaded instantly!\n")
+        return jsonify(cached), 200
+    
     today = datetime.now().date()
     end_of_week = today + timedelta(days=7)
     
@@ -448,13 +485,16 @@ def get_doctor_dashboard():
         Appointment.status != 'Cancelled'
     ).order_by(Appointment.date.asc(), Appointment.time_slot.asc()).all()
     
-    return jsonify([{
+    data = [{
         'id': a.id,
         'patient_name': a.patient.user.username,
         'date': str(a.date),
         'time_slot': a.time_slot,
         'status': a.status
-    } for a in upcoming]), 200
+    } for a in upcoming]
+    
+    cache.set(cache_key, data, timeout=600)  # 10 minutes
+    return jsonify(data), 200
 
 @app.route('/api/doctor/patients', methods=['GET'])
 @doctor_required
@@ -523,17 +563,27 @@ def add_treatment():
         
     appt.status = 'Completed' # automatically complete appointment
     db.session.commit()
+    
+    # Clear caches
+    cache.delete(f"patient_history_{appt.patient_id}")
+    cache.delete(f"doctor_dashboard_{appt.doctor_id}")
+    cache.delete("admin_dashboard_stats")
+    print("[CACHE] Patient history, doctor dashboard, and admin stats caches cleared after treatment.")
+    
     return jsonify({'message': 'Treatment saved successfully!'}), 201
 
 @app.route('/api/doctor/availability', methods=['PUT'])
 @doctor_required
 def update_doctor_availability():
-    """Doctor sets their own availability string."""
+    """Doctor sets their own availability day (Monday-Saturday)."""
     user_id = get_jwt_identity()
     doctor = Doctor.query.filter_by(user_id=user_id).first()
     data = request.get_json()
     
     if 'availability' in data:
+        if data['availability'] not in VALID_AVAILABILITY_OPTIONS:
+            return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
+
         doctor.availability = data['availability']
         db.session.commit()
         
@@ -660,6 +710,7 @@ def book_appointment():
     
     # Invalidate that specific Doctor's availability cache dynamically
     cache.delete(f"doctor_{doctor_id}_availability")
+    cache.delete("admin_dashboard_stats")  # Update stats
     print(f"\n[CACHE] Cleared availability cache for Doctor {doctor_id} due to new booking.\n")
     
     return jsonify({'message': 'Appointment successfully booked!'}), 201
@@ -714,6 +765,12 @@ def get_patient_history_self():
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
     
+    cache_key = f"patient_history_{patient.id}"
+    cached = cache.get(cache_key)
+    if cached:
+        print(f"\n[CACHE HIT] Patient {patient.id} history loaded instantly!\n")
+        return jsonify(cached), 200
+    
     results = []
     # Fetch all, sorted chronologically
     appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
@@ -736,7 +793,8 @@ def get_patient_history_self():
                 'notes': appt.treatment.notes
             }
         results.append(appt_data)
-        
+    
+    cache.set(cache_key, results, timeout=600)  # 10 minutes
     return jsonify(results), 200
 
 @app.route('/api/patient/<int:patient_id>/history', methods=['GET'])
@@ -769,6 +827,7 @@ def cross_role_patient_history(patient_id):
     appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
     for appt in appts:
         appt_data = {
+            'id': appt.id,
             'date': str(appt.date),
             'time_slot': appt.time_slot,
             'doctor_name': appt.doctor.user.username,
@@ -838,6 +897,12 @@ def update_shared_appointment_status(appointment_id):
         
     appt.status = new_status
     db.session.commit()
+    
+    # Clear relevant caches
+    cache.delete(f"patient_history_{appt.patient_id}")
+    cache.delete(f"doctor_dashboard_{appt.doctor_id}")
+    cache.delete("admin_dashboard_stats")
+    
     return jsonify({'message': f'Appointment updated to {new_status}'}), 200
 
 # ==========================================
@@ -846,16 +911,24 @@ def update_shared_appointment_status(appointment_id):
 
 @celery.task(name='app.send_daily_reminders')
 def send_daily_reminders():
-    """Run every morning: Print reminder for today's appointments."""
+    """Run every morning: Send email reminders for today's appointments."""
+    from flask_mail import Message
     today = datetime.now().date()
     appointments = Appointment.query.filter_by(date=today, status='Booked').all()
     for appt in appointments:
-        print(f"\n[ALERT] Reminder sent to {appt.patient.user.username}: You have an appointment today at {appt.time_slot} with Dr. {appt.doctor.user.username}!\n")
-    return f"Sent {len(appointments)} reminders."
+        msg = Message(
+            subject="Hospital Appointment Reminder",
+            recipients=[appt.patient.user.email],
+            body=f"Dear {appt.patient.user.username},\n\nYou have an appointment today at {appt.time_slot} with Dr. {appt.doctor.user.username}.\n\nPlease arrive on time.\n\nBest regards,\nHospital Management System"
+        )
+        mail.send(msg)
+        print(f"[EMAIL] Reminder sent to {appt.patient.user.email}")
+    return f"Sent {len(appointments)} email reminders."
 
 @celery.task(name='app.generate_monthly_doctor_report')
 def generate_monthly_doctor_report():
-    """Aggregate appointments/treatments for current month & generate HTML summary."""
+    """Aggregate appointments/treatments for current month & generate HTML summary and email."""
+    from flask_mail import Message
     today = datetime.now().date()
     start_of_month = today.replace(day=1)
     
@@ -878,10 +951,16 @@ def generate_monthly_doctor_report():
             html_report += f"<li>{a.date}: Patient {a.patient.user.username} - {diag}</li>\n"
         html_report += "</ul>"
         
-        print(f"\n[REPORT] Emailing Dr. {doc.user.username}:\n{html_report}")
+        msg = Message(
+            subject="Monthly Activity Report",
+            recipients=[doc.user.email],
+            html=html_report
+        )
+        mail.send(msg)
+        print(f"[EMAIL] Monthly report sent to Dr. {doc.user.email}")
         reports_generated += 1
         
-    return f"Generated {reports_generated} monthly reports."
+    return f"Generated and emailed {reports_generated} monthly reports."
 
 @celery.task(name='app.export_treatment_csv')
 def export_treatment_csv(patient_id):

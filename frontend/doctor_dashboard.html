@@ -24,8 +24,16 @@
         <div class="card mb-4">
             <div class="card-header bg-white fw-bold">My Calendar / Availability</div>
             <div class="card-body">
-                <form @submit.prevent="updateAvailability" class="d-flex gap-2">
-                    <input type="text" class="form-control" v-model="availability" placeholder="Example: 'Mon-Thurs 8AM - 4PM, Friday off'" required>
+                <form @submit.prevent="updateAvailability" class="d-flex gap-2 align-items-center">
+                    <select class="form-select" v-model="availability" required>
+                        <option value="" disabled selected>Select availability (Mon-Sat)</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                        <option value="Saturday">Saturday</option>
+                    </select>
                     <button class="btn btn-info px-4">Save</button>
                 </form>
             </div>
@@ -54,7 +62,7 @@
 
         <!-- Treatment Form Card (Only shows when button gives it an ID) -->
         <div class="card border-info mt-4 shadow" v-if="activeApptId">
-            <div class="card-header bg-info text-white fw-bold">Adding Medical Notes for Appointment #{{ activeApptId }}</div>
+            <div class="card-header bg-info text-white fw-bold">Adding / Updating Medical Notes for Appointment #{{ activeApptId }}</div>
             <div class="card-body">
                 <form @submit.prevent="saveTreatment">
                     <div class="mb-3">
@@ -73,6 +81,32 @@
                 </form>
             </div>
         </div>
+
+        <h3 class="mt-5">My Patients & Their Medical History</h3>
+        <button class="btn btn-outline-info mb-3" @click="fetchPatients">Load My Patients</button>
+        <ul class="list-group mb-4" v-if="patients.length > 0">
+            <li class="list-group-item d-flex justify-content-between align-items-center" v-for="pat in patients" :key="pat.patient_id">
+                {{ pat.name }} (Contact: {{ pat.contact }})
+                <button class="btn btn-sm btn-info" @click="viewPatientHistory(pat)">View History</button>
+            </li>
+        </ul>
+
+        <div class="card border-info mb-4 shadow" v-if="selectedPatient">
+            <div class="card-header bg-info text-white fw-bold">History for {{ selectedPatient.name }}</div>
+            <div class="card-body">
+                <ul class="list-group">
+                    <li class="list-group-item" v-for="h in patientHistory" :key="h.id">
+                        <strong>{{ h.date }} {{ h.time_slot }}</strong> - {{ h.doctor_name }} ({{ h.status }})
+                        <div v-if="h.treatment" class="mt-2 text-muted border p-2 rounded bg-light">
+                            <strong>Diagnosis:</strong> {{ h.treatment.diagnosis }}<br>
+                            <strong>Prescription:</strong> {{ h.treatment.prescription }}<br>
+                            <strong>Notes:</strong> {{ h.treatment.notes }}
+                        </div>
+                        <button v-if="h.treatment || h.status === 'Completed'" class="btn btn-sm btn-outline-warning mt-2" @click="editHistory(h)">Edit Notes</button>
+                    </li>
+                </ul>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -83,7 +117,8 @@
             token: localStorage.getItem('access_token'),
             error: '', success: '', availability: '',
             appointments: [], activeApptId: null,
-            treatment: { diagnosis: '', prescription: '', notes: '' }
+            treatment: { diagnosis: '', prescription: '', notes: '' },
+            patients: [], selectedPatient: null, patientHistory: []
         }},
         methods: {
             authHeader() { return { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' }; },
@@ -114,10 +149,32 @@
                     this.activeApptId = null; 
                     this.treatment = {diagnosis:'', prescription:'', notes:''};
                     this.fetchData(); // Rerender table so it changes from Booked to Completed
+                    if(this.selectedPatient) this.viewPatientHistory(this.selectedPatient);
                 } else {
                     const data = await res.json();
                     this.error = data.message;
                 }
+            },
+            async fetchPatients() {
+                const res = await fetch('http://127.0.0.1:5000/api/doctor/patients', { headers: this.authHeader() });
+                if(res.ok) this.patients = await res.json();
+            },
+            async viewPatientHistory(pat) {
+                this.selectedPatient = pat;
+                const res = await fetch('http://127.0.0.1:5000/api/patient/' + pat.patient_id + '/history', { headers: this.authHeader() });
+                if(res.ok) {
+                    const data = await res.json();
+                    this.patientHistory = data.history;
+                }
+            },
+            editHistory(h) {
+                this.activeApptId = h.id;
+                this.treatment = {
+                    diagnosis: h.treatment ? h.treatment.diagnosis : '',
+                    prescription: h.treatment ? h.treatment.prescription : '',
+                    notes: h.treatment ? h.treatment.notes : ''
+                };
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
         },
         mounted() {
