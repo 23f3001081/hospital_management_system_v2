@@ -52,9 +52,10 @@
                     <td><b>{{ appt.date }}</b></td>
                     <td><b>{{ appt.time_slot }}</b></td>
                     <td>{{ appt.status }}</td>
-                    <td>
+                    <td class="d-flex gap-2">
                         <!-- Only show button if not already completed -->
                         <button v-if="appt.status === 'Booked'" class="btn btn-sm btn-outline-info" @click="openTreatmentForm(appt.id)">Complete & Prescribe</button>
+                        <button v-if="appt.status === 'Booked'" class="btn btn-sm btn-outline-danger" @click="cancelAppt(appt.id)">Cancel</button>
                     </td>
                 </tr>
             </tbody>
@@ -158,6 +159,15 @@
             async fetchPatients() {
                 const res = await fetch('http://127.0.0.1:5000/api/doctor/patients', { headers: this.authHeader() });
                 if(res.ok) this.patients = await res.json();
+            },
+            async cancelAppt(id) {
+                if(confirm("Are you sure you want to cancel this appointment?")) {
+                    const res = await fetch('http://127.0.0.1:5000/api/doctor/appointment/' + id, {
+                        method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: 'Cancelled' })
+                    });
+                    if(res.ok) { this.success = "Appointment instantly cancelled!"; this.fetchData(); }
+                    else { const data = await res.json(); this.error = data.message; }
+                }
             },
             async viewPatientHistory(pat) {
                 this.selectedPatient = pat;

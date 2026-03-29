@@ -45,6 +45,13 @@
                 <div class="card mb-4 border-0 shadow-sm">
                     <div class="card-header bg-white"><b>1. Search for a Doctor by Name or Type</b></div>
                     <div class="card-body">
+                        <!-- Available Departments / Specializations -->
+                        <div class="mb-3">
+                            <h6 class="text-muted">Available Hospital Departments:</h6>
+                            <span class="badge bg-secondary me-1 mb-1" v-for="d in departments" :key="d.id">{{ d.name }}</span>
+                            <div v-if="departments.length === 0" class="text-muted small">Loading departments...</div>
+                        </div>
+                        <hr>
                         <div class="input-group mb-3">
                             <input type="text" class="form-control" v-model="searchQuery" placeholder="e.g. Heart, Bones, Smith">
                             <button class="btn btn-outline-success" @click="searchDoctors">Hunt Database</button>
@@ -152,7 +159,7 @@
         data() { return {
             token: localStorage.getItem('access_token'),
             error: '', success: '', 
-            searchQuery: '', searchResults: [], targetDoctor: null,
+            searchQuery: '', searchResults: [], targetDoctor: null, departments: [],
             bookForm: { date: '', time_slot: '' },
             profileForm: { contact: '', address: '' },
             history: [], showPayment: false,
@@ -165,6 +172,10 @@
                 // Fetch the medical data mapping from the secure python route
                 const res = await fetch('http://127.0.0.1:5000/api/patient/history', { headers: this.authHeader() });
                 if(res.ok) this.history = await res.json();
+            },
+            async fetchDepartments() {
+                const res = await fetch('http://127.0.0.1:5000/api/departments'); // public route
+                if(res.ok) this.departments = await res.json();
             },
             async searchDoctors() {
                 this.error = '';
@@ -240,7 +251,7 @@
         mounted() {
             // Force user back to index.html if they try to access this without a JWT token!
             if(!this.token || localStorage.getItem('role') !== 'Patient') this.logout();
-            else this.fetchHistory();
+            else { this.fetchHistory(); this.fetchDepartments(); }
         }
     }).mount('#app');
 </script>

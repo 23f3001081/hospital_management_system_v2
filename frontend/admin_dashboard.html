@@ -190,7 +190,15 @@
                     </div>
                     <ul class="list-group mt-2" v-if="patSearchResults.length">
                         <li class="list-group-item" v-for="p in patSearchResults" :key="p.id">
-                            <strong>{{ p.name }}</strong> - Contact: {{ p.contact }}
+                            <div class="d-flex align-items-center gap-2">
+                                <input type="text" class="form-control form-control-sm" v-model="p.name"
+                                    placeholder="Name">
+                                <input type="text" class="form-control form-control-sm" v-model="p.contact"
+                                    placeholder="Contact">
+                                <input type="text" class="form-control form-control-sm" v-model="p.address"
+                                    placeholder="Address">
+                                <button class="btn btn-sm btn-success" @click="updatePatient(p)">Save</button>
+                            </div>
                         </li>
                     </ul>
                 </div>
@@ -348,6 +356,15 @@
                     if (!this.searchPatQuery) return;
                     const res = await fetch('http://127.0.0.1:5000/api/admin/patients/search?q=' + this.searchPatQuery, { headers: this.authHeader() });
                     if (res.ok) this.patSearchResults = await res.json();
+                },
+                async updatePatient(p) {
+                    try {
+                        const res = await fetch('http://127.0.0.1:5000/api/admin/patient/' + p.id, {
+                            method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ name: p.name, contact: p.contact, address: p.address })
+                        });
+                        if (res.ok) { this.success = "Patient profile instantly updated via DB!"; }
+                        else { const data = await res.json(); this.error = data.message; }
+                    } catch (e) { this.error = "Network error during PUT request."; }
                 },
                 async removeUser(user_id) {
                     if (confirm("DANGER: Permanently revoke this doctor's auth and delete their hospital profile? This cannot be undone.")) {

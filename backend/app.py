@@ -7,7 +7,7 @@ import string
 from celery import Celery
 from celery.schedules import crontab
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_jwt_extended import (
     JWTManager,
@@ -15,7 +15,7 @@ from flask_jwt_extended import (
     get_jwt,
     get_jwt_identity,
     verify_jwt_in_request,
-    jwt_required
+    jwt_required 
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 
@@ -30,7 +30,7 @@ from models import (
     Appointment
 )
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../frontend', static_folder='../frontend')
 
 # ==========================================
 # 1. CONFIGURATION & SETUP
@@ -128,11 +128,24 @@ VALID_AVAILABILITY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Fri
 
 @app.route('/', methods=['GET'])
 def home():
-    return jsonify({
-        "status": "online",
-        "message": "Welcome to the HMS API Backend!",
-        "note": "Almost all routes are under /api/ and require authentication tokens."
-    }), 200
+    return render_template('index.html')
+
+@app.route('/admin_dashboard.html', methods=['GET'])
+def admin_ui():
+    return render_template('admin_dashboard.html')
+
+@app.route('/doctor_dashboard.html', methods=['GET'])
+def doctor_ui():
+    return render_template('doctor_dashboard.html')
+
+@app.route('/patient_dashboard.html', methods=['GET'])
+def patient_ui():
+    return render_template('patient_dashboard.html')
+
+@app.route('/manifest.json', methods=['GET'])
+def manifest():
+    return app.send_static_file('manifest.json')
+
 
 
 # ==========================================
@@ -388,8 +401,25 @@ def search_patients():
         (User.id == int(query) if query.isdigit() else False)
     ).all()
     
-    results = [{'id': p.id, 'name': p.user.username, 'contact': p.contact} for p in patients]
+    results = [{'id': p.id, 'name': p.user.username, 'contact': p.contact, 'address': p.address} for p in patients]
     return jsonify(results), 200
+
+@app.route('/api/admin/patient/<int:patient_id>', methods=['PUT'])
+@admin_required
+def update_patient_admin(patient_id):
+    """Admin updates patient info."""
+    patient = Patient.query.get(patient_id)
+    if not patient:
+         return jsonify({'message': 'Patient not found'}), 404
+    data = request.get_json()
+    if 'name' in data:
+         patient.user.username = data['name']
+    if 'contact' in data:
+         patient.contact = data['contact']
+    if 'address' in data:
+         patient.address = data['address']
+    db.session.commit()
+    return jsonify({'message': 'Patient updated successfully'}), 200
 
 @app.route('/api/admin/appointments', methods=['GET'])
 @admin_required
@@ -638,7 +668,8 @@ def patient_search_doctors():
     
     doctors = Doctor.query.join(User).filter(
         (Doctor.specialization.ilike(f'%{query}%')) | 
-        (User.username.ilike(f'%{query}%'))
+        (User.username.ilike(f'%{query}%')) |
+        (Doctor.availability.ilike(f'%{query}%'))
     ).all()
     
     results = [{
@@ -687,6 +718,11 @@ def book_appointment():
     appt_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
     time_slot = data['time_slot']
     doctor_id = data['doctor_id']
+
+    doctor = Doctor.query.get(doctor_id)
+    if doctor and doctor.availability and doctor.availability != 'Not specified':
+        if appt_date.strftime('%A') != doctor.availability:
+            return jsonify({'message': f'Doctor is only available on {doctor.availability}s'}), 400
 
     # Crucial logic: Check if Doctor is available at that date and time_slot
     existing_appt = Appointment.query.filter_by(
@@ -738,6 +774,10 @@ def manage_patient_appointment(appointment_id):
     # Rescheduling
     if new_date and new_time_slot:
         parsed_date = datetime.strptime(new_date, '%Y-%m-%d').date()
+        
+        if appt.doctor.availability and appt.doctor.availability != 'Not specified':
+            if parsed_date.strftime('%A') != appt.doctor.availability:
+                return jsonify({'message': f'Doctor is only available on {appt.doctor.availability}s'}), 400
         
         # Check availability again if changing schedule
         conflict = Appointment.query.filter(
@@ -977,7 +1017,7 @@ def export_treatment_csv(patient_id):
     
     with open(filename, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(['Date', 'Time Slot', 'Doctor', 'Specialization', 'Diagnosis', 'Prescription', 'Notes', 'Status'])
+        writer.writerow(['Patient ID', 'Patient Name', 'Doctor', 'Appointment Date', 'Time Slot', 'Specialization', 'Diagnosis', 'Prescription', 'Next Visit/Notes', 'Status'])
         
         for appt in appts:
             diag = appt.treatment.diagnosis if appt.treatment else ""
@@ -985,8 +1025,9 @@ def export_treatment_csv(patient_id):
             notes = appt.treatment.notes if appt.treatment else ""
             
             writer.writerow([
-                str(appt.date), appt.time_slot, appt.doctor.user.username, 
-                appt.doctor.specialization, diag, presc, notes, appt.status
+                patient.user_id, patient.user.username, appt.doctor.user.username, 
+                str(appt.date), appt.time_slot, appt.doctor.specialization, 
+                diag, presc, notes, appt.status
             ])
             
     print(f"\n[ALERT - JOB COMPLETE] CSV Export perfectly completed for {patient.user.username}! File saved at {filename}\n")
