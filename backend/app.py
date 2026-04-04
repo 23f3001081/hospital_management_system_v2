@@ -133,15 +133,23 @@ def home():
 
 @app.route('/admin_dashboard.html', methods=['GET'])
 def admin_ui():
-    return app.send_static_file('admin_dashboard.html')
+    return app.send_static_file('admin/admin_dashboard.html')
 
 @app.route('/doctor_dashboard.html', methods=['GET'])
 def doctor_ui():
-    return app.send_static_file('doctor_dashboard.html')
+    return app.send_static_file('doctor/doctor_dashboard.html')
 
 @app.route('/patient_dashboard.html', methods=['GET'])
 def patient_ui():
-    return app.send_static_file('patient_dashboard.html')
+    return app.send_static_file('patient/patient_dashboard.html')
+
+@app.route('/<path:filename>.js', methods=['GET'])
+def serve_js(filename):
+    return app.send_static_file(f"{filename}.js")
+
+@app.route('/<path:filename>.css', methods=['GET'])
+def serve_css(filename):
+    return app.send_static_file(f"{filename}.css")
 
 @app.route('/manifest.json', methods=['GET'])
 def manifest():
