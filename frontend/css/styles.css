@@ -1,0 +1,22 @@
+/* ==========================================================
+   Global Custom Styles for Hospital Management System
+========================================================== */
+
+/* Example: Add clean global typography rendering */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Example: Small floating animation for cards */
+.custom-hover-card {
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.custom-hover-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px rgba(0,0,0,0.1) !important;
+}
+
+/* You can put any specific overriding colors or styles here
+   and access them across all your dashboards! */
