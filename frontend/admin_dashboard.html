@@ -14,10 +14,15 @@
 <body class="bg-light">
     <div id="app">
         <!-- Navbar -->
-        <nav class="navbar navbar-dark bg-dark">
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
-                <span class="navbar-brand mb-0 h1">Admin Management Portal</span>
-                <button class="btn btn-outline-light" @click="logout">Logout</button>
+                <span class="navbar-brand mb-0 h1">Admin Dashboard</span>
+                <div class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-center">
+                    <a class="nav-link" href="#" @click.prevent="currentTab='overview'" :class="{active: currentTab==='overview'}">Overview</a>
+                    <a class="nav-link" href="#" @click.prevent="currentTab='doctors'" :class="{active: currentTab==='doctors'}">Doctor Dashboard</a>
+                    <a class="nav-link" href="#" @click.prevent="currentTab='patients'" :class="{active: currentTab==='patients'}">Patient Dashboard</a>
+                    <button class="btn btn-sm btn-outline-light ms-3" @click="logout">Logout</button>
+                </div>
             </div>
         </nav>
 
@@ -26,8 +31,8 @@
             <div v-if="success" class="alert alert-success">{{ success }}</div>
 
             <!-- Dashboard Stats -->
-            <h3>System Overview</h3>
-            <div class="row mb-4">
+            <h3 v-show="currentTab === 'overview'">System Overview</h3>
+            <div class="row mb-4" v-show="currentTab === 'overview'">
                 <div class="col-md-4">
                     <div class="card text-center">
                         <div class="card-body">
@@ -54,15 +59,10 @@
                 </div>
             </div>
 
-            <!-- Chart.js Graphics -->
-            <div class="card mb-4 border-0 shadow-sm">
-                <div class="card-body">
-                    <canvas id="myChart" height="100"></canvas>
-                </div>
-            </div>
+
 
             <!-- Add Doctor Simple form with HTML validations -->
-            <div class="card mb-4">
+            <div class="card mb-4" v-show="currentTab === 'doctors'">
                 <div class="card-header bg-primary text-white">Create New Doctor Account</div>
                 <div class="card-body">
                     <form @submit.prevent="addDoctor">
@@ -97,13 +97,15 @@
                             </div>
                             <div class="col">
                                 <select class="form-select" v-model="newDoc.availability" required>
-                                    <option value="" disabled selected>Availability (Mon-Sat)</option>
+                                    <option value="" disabled selected>Availability (7 Days or Everyday)</option>
                                     <option value="Monday">Monday</option>
                                     <option value="Tuesday">Tuesday</option>
                                     <option value="Wednesday">Wednesday</option>
                                     <option value="Thursday">Thursday</option>
                                     <option value="Friday">Friday</option>
                                     <option value="Saturday">Saturday</option>
+                                    <option value="Sunday">Sunday</option>
+                                    <option value="Everyday">Everyday (7 Days)</option>
                                 </select>
                             </div>
                             <div class="col-auto"><button type="submit" class="btn btn-primary">Save Doctor
@@ -114,8 +116,8 @@
             </div>
 
             <!-- Manage Doctors Table (CRUD) -->
-            <h3 class="mt-4">Manage Hospital Doctors</h3>
-            <table class="table table-bordered bg-white shadow-sm">
+            <h3 class="mt-4" v-show="currentTab === 'doctors'">Manage Hospital Doctors</h3>
+            <table class="table table-bordered bg-white shadow-sm" v-show="currentTab === 'doctors'">
                 <thead class="table-primary">
                     <tr>
                         <th>Doc ID</th>
@@ -154,6 +156,8 @@
                                 <option value="Thursday">Thursday</option>
                                 <option value="Friday">Friday</option>
                                 <option value="Saturday">Saturday</option>
+                                <option value="Sunday">Sunday</option>
+                                <option value="Everyday">Everyday</option>
                             </select>
                         </td>
                         <td>
@@ -168,9 +172,9 @@
             </table>
 
             <!-- Search UI -->
-            <h3 class="mt-4">Search System</h3>
-            <div class="row mb-4">
-                <div class="col-md-6 mb-2">
+            <div class="row mb-4 mt-4">
+                <div class="col-md-12 mb-4" v-show="currentTab === 'doctors'">
+                    <h3>Search Doctors</h3>
                     <div class="input-group">
                         <input type="text" class="form-control" v-model="searchDocQuery"
                             placeholder="Search Doctors...">
@@ -182,7 +186,8 @@
                         </li>
                     </ul>
                 </div>
-                <div class="col-md-6 mb-2">
+                <div class="col-md-12 mb-4" v-show="currentTab === 'patients'">
+                    <h3>Search / Manage Patients</h3>
                     <div class="input-group">
                         <input type="text" class="form-control" v-model="searchPatQuery"
                             placeholder="Search Patients by Name/ID/Contact...">
@@ -205,8 +210,8 @@
             </div>
 
             <!-- View All Appointments Table -->
-            <h3 class="mt-5">Booked Appointments</h3>
-            <div class="d-flex gap-2 mb-2 align-items-center">
+            <h3 class="mt-5" v-show="currentTab === 'overview'">Booked Appointments</h3>
+            <div class="d-flex gap-2 mb-2 align-items-center" v-show="currentTab === 'overview'">
                 <label class="mb-0"><strong>Show:</strong></label>
                 <select class="form-select form-select-sm w-auto" v-model="appointmentFilter">
                     <option value="All">All</option>
@@ -217,7 +222,7 @@
                 <button class="btn btn-outline-secondary btn-sm" @click="appointmentFilter='Booked'">Booked
                     only</button>
             </div>
-            <table class="table table-bordered bg-white">
+            <table class="table table-bordered bg-white" v-show="currentTab === 'overview'">
                 <thead class="table-dark">
                     <tr>
                         <th>ID</th>
@@ -255,6 +260,7 @@
         createApp({
             data() {
                 return {
+                    currentTab: 'overview',
                     token: localStorage.getItem('access_token'),
                     error: '', success: '',
                     stats: { total_patients: 0, total_doctors: 0, total_appointments: 0 },
@@ -278,22 +284,6 @@
                         const res1 = await fetch('http://127.0.0.1:5000/api/admin/dashboard', { headers: this.authHeader() });
                         this.stats = await res1.json();
 
-                        // Basic ChartJS integration
-                        if (window.myChartInstance) {
-                            window.myChartInstance.destroy();
-                        }
-                        const ctx = document.getElementById('myChart');
-                        window.myChartInstance = new Chart(ctx, {
-                            type: 'bar',
-                            data: {
-                                labels: ['Total Registered Patients', 'Total Emplolyed Doctors', 'Total Booked Appointments'],
-                                datasets: [{
-                                    label: 'Hospital Usage Numbers',
-                                    data: [this.stats.total_patients, this.stats.total_doctors, this.stats.total_appointments],
-                                    backgroundColor: ['#0d6efd', '#198754', '#ffc107']
-                                }]
-                            }
-                        });
 
                         const res2 = await fetch('http://127.0.0.1:5000/api/admin/appointments', { headers: this.authHeader() });
                         this.appointments = await res2.json();
