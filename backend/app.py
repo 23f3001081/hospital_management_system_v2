@@ -124,23 +124,24 @@ doctor_required = role_required('Doctor')
 patient_required = role_required('Patient')
 
 # Doctor availability is strictly limited to weekday values (mon-sat)
-VALID_AVAILABILITY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+VALID_AVAILABILITY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Everyday']
 
 @app.route('/', methods=['GET'])
+@app.route('/index.html', methods=['GET'])
 def home():
-    return render_template('index.html')
+    return app.send_static_file('index.html')
 
 @app.route('/admin_dashboard.html', methods=['GET'])
 def admin_ui():
-    return render_template('admin_dashboard.html')
+    return app.send_static_file('admin_dashboard.html')
 
 @app.route('/doctor_dashboard.html', methods=['GET'])
 def doctor_ui():
-    return render_template('doctor_dashboard.html')
+    return app.send_static_file('doctor_dashboard.html')
 
 @app.route('/patient_dashboard.html', methods=['GET'])
 def patient_ui():
-    return render_template('patient_dashboard.html')
+    return app.send_static_file('patient_dashboard.html')
 
 @app.route('/manifest.json', methods=['GET'])
 def manifest():
@@ -720,7 +721,7 @@ def book_appointment():
     doctor_id = data['doctor_id']
 
     doctor = Doctor.query.get(doctor_id)
-    if doctor and doctor.availability and doctor.availability != 'Not specified':
+    if doctor and doctor.availability and doctor.availability not in ['Not specified', 'Everyday']:
         if appt_date.strftime('%A') != doctor.availability:
             return jsonify({'message': f'Doctor is only available on {doctor.availability}s'}), 400
 
@@ -775,7 +776,7 @@ def manage_patient_appointment(appointment_id):
     if new_date and new_time_slot:
         parsed_date = datetime.strptime(new_date, '%Y-%m-%d').date()
         
-        if appt.doctor.availability and appt.doctor.availability != 'Not specified':
+        if appt.doctor.availability and appt.doctor.availability not in ['Not specified', 'Everyday']:
             if parsed_date.strftime('%A') != appt.doctor.availability:
                 return jsonify({'message': f'Doctor is only available on {appt.doctor.availability}s'}), 400
         
