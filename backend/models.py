@@ -44,6 +44,7 @@ class Doctor(db.Model):
     department_id = db.Column(db.Integer, db.ForeignKey('departments.id'))
     specialization = db.Column(db.String(100))
     availability = db.Column(db.String(255))
+    time_availability = db.Column(db.String(100), default='10:00 AM - 09:00 PM')
     
     appointments = db.relationship('Appointment', backref='doctor', lazy=True, cascade='all, delete-orphan')
 

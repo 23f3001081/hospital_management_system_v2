@@ -310,7 +310,8 @@ def add_doctor():
         user_id=new_user.id,
         department_id=department.id,
         specialization=data['specialization'],
-        availability=availability_value
+        availability=availability_value,
+        time_availability=data.get('time_availability', '10:00 AM - 09:00 PM')
     )
     db.session.add(new_doctor)
     db.session.commit()
@@ -341,6 +342,8 @@ def update_doctor(doctor_id):
         if data['availability'] not in VALID_AVAILABILITY_OPTIONS:
             return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
         doctor.availability = data['availability']
+    if 'time_availability' in data:
+        doctor.time_availability = data['time_availability']
     if 'name' in data:
         doctor.user.username = data['name']
     
@@ -362,7 +365,8 @@ def get_all_doctors():
         'name': doc.user.username,
         'specialization': doc.specialization,
         'department': doc.department.name if doc.department else 'N/A',
-        'availability': doc.availability
+        'availability': doc.availability,
+        'time_availability': doc.time_availability
     } for doc in doctors]
     return jsonify(results), 200
 
@@ -380,7 +384,8 @@ def get_doctor(doctor_id):
         'email': doc.user.email,
         'specialization': doc.specialization,
         'department': doc.department.name if doc.department else 'N/A',
-        'availability': doc.availability
+        'availability': doc.availability,
+        'time_availability': doc.time_availability
     }), 200
 
 @app.route('/api/admin/doctors/search', methods=['GET'])
@@ -410,7 +415,22 @@ def search_patients():
         (User.id == int(query) if query.isdigit() else False)
     ).all()
     
-    results = [{'id': p.id, 'name': p.user.username, 'contact': p.contact, 'address': p.address} for p in patients]
+    results = [{'id': p.id, 'user_id': p.user_id, 'name': p.user.username, 'contact': p.contact, 'address': p.address} for p in patients]
+    return jsonify(results), 200
+
+@app.route('/api/admin/patients', methods=['GET'])
+@admin_required
+def get_all_patients():
+    """Admin only: Get a list of all patients."""
+    patients = Patient.query.all()
+    results = [{
+        'id': p.id,
+        'user_id': p.user_id,
+        'name': p.user.username,
+        'email': p.user.email,
+        'contact': p.contact,
+        'address': p.address
+    } for p in patients]
     return jsonify(results), 200
 
 @app.route('/api/admin/patient/<int:patient_id>', methods=['PUT'])
@@ -500,6 +520,17 @@ def remove_user(user_id):
     return jsonify({'message': f'User {user.username} has been removed from the system'}), 200
 
 #Doctor Functions
+
+@app.route('/api/doctor/profile', methods=['GET'])
+@doctor_required
+def get_doctor_profile():
+    """Get the logged-in doctor's profile."""
+    user_id = get_jwt_identity()
+    doctor = Doctor.query.filter_by(user_id=user_id).first()
+    return jsonify({
+        'availability': doctor.availability,
+        'time_availability': doctor.time_availability
+    }), 200
 
 @app.route('/api/doctor/dashboard', methods=['GET'])
 @doctor_required
@@ -873,7 +904,14 @@ def cross_role_patient_history(patient_id):
         return jsonify({'message': 'Access forbidden'}), 403
         
     history = []
-    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
+    
+    query = Appointment.query.filter_by(patient_id=patient.id)
+    if user_role == 'Doctor':
+        doctor = Doctor.query.filter_by(user_id=user_id).first()
+        query = query.filter_by(doctor_id=doctor.id)
+        
+    appts = query.order_by(Appointment.date.desc()).all()
+    
     for appt in appts:
         appt_data = {
             'id': appt.id,
@@ -900,14 +938,42 @@ def cross_role_patient_history(patient_id):
 @app.route('/api/patient/export-history', methods=['POST'])
 @patient_required
 def trigger_export():
-    """Trigger the async CSV export task."""
+    """Trigger the CSV export task and download synchronously."""
+    from flask import send_file
+    import io
+    import csv
+    
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
     
-    # Launch async task
-    export_treatment_csv.delay(patient.id)
+    appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
     
-    return jsonify({'message': 'Job Started: Your CSV export is being generated in the background. You will receive an alert once completed!'}), 202
+    # Generate CSV in memory bypassing filesystem so user downloads instantly
+    si = io.StringIO()
+    writer = csv.writer(si)
+    writer.writerow(['Patient ID', 'Patient Name', 'Doctor', 'Appointment Date', 'Time Slot', 'Specialization', 'Diagnosis', 'Prescription', 'Next Visit/Notes', 'Status'])
+    
+    for appt in appts:
+        diag = appt.treatment.diagnosis if appt.treatment else ""
+        presc = appt.treatment.prescription if appt.treatment else ""
+        notes = appt.treatment.notes if appt.treatment else ""
+        
+        writer.writerow([
+            patient.user_id, patient.user.username, appt.doctor.user.username, 
+            str(appt.date), appt.time_slot, appt.doctor.specialization, 
+            diag, presc, notes, appt.status
+        ])
+        
+    output = io.BytesIO()
+    output.write(si.getvalue().encode('utf-8'))
+    output.seek(0)
+    
+    return send_file(
+        output,
+        mimetype='text/csv',
+        download_name=f'Medical_History_{patient.user.username}.csv',
+        as_attachment=True
+    )
 
 @app.route('/api/appointments/<int:appointment_id>/status', methods=['PATCH'])
 @jwt_required()
@@ -1013,7 +1079,9 @@ def generate_monthly_doctor_report():
 
 @celery.task(name='app.export_treatment_csv')
 def export_treatment_csv(patient_id):
-    """Async Job: Generate CSV of treatment history."""
+    """Async Job: Generate CSV of treatment history and email it to the user."""
+    from flask_mail import Message
+    
     patient = Patient.query.get(patient_id)
     if not patient:
         print(f"[ERROR] Patient {patient_id} not found for export.")
@@ -1039,11 +1107,27 @@ def export_treatment_csv(patient_id):
                 diag, presc, notes, appt.status
             ])
             
-    print(f"\n[ALERT - JOB COMPLETE] CSV Export perfectly completed for {patient.user.username}! File saved at {filename}\n")
+    # Send Alert / File via Email natively from the background worker
+    try:
+        msg = Message(
+            subject="Your Medical History Export (Async Alert)",
+            recipients=[patient.user.email],
+            body=f"Hello {patient.user.username},\n\nYour requested async batch job is complete! As requested, we have attached your full treatment history CSV report to this email.\n\nThank you,\nHospital Administration"
+        )
+        with app.app_context():
+            with open(filename, "rb") as fp:
+                msg.attach(f"medical_history_{patient_id}.csv", "text/csv", fp.read())
+            mail.send(msg)
+        print(f"\n[ALERT - JOB COMPLETE] CSV Export complete & Emailed to {patient.user.email}! File saved at {filename}\n")
+    except Exception as e:
+        print(f"\n[ALERT - JOB COMPLETE] CSV Export generated locally at {filename}, but email failed: {str(e)}\n")
+        
     return filename
 
 # ==========================================
 # 6. START THE SERVER
 # ==========================================
+celery_app = celery
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
