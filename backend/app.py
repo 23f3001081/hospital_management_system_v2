@@ -88,8 +88,7 @@ celery.conf.beat_schedule = {
         'schedule': crontab(0, 0, day_of_month='1'),
     }
 }
-
-# specific routes 
+ 
 
 def role_required(required_role):
     def wrapper(fn):
@@ -111,9 +110,21 @@ patient_required = role_required('Patient')
 # Doctor availability 
 VALID_AVAILABILITY_OPTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday', 'Everyday']
 
-# Catch-all for API 404s or other routes could go here, but for now we rely on static serving for frontend.
-# The following specialized loaders for .vue etc are technically redundant with static_url_path=''
-# but we keep them if they provide any specific headers or logic in the future.
+def parse_time_logic(time_str):
+    """Helper to parse time strings like '10:00 AM', '1pm', '13:00' into time objects."""
+    time_str = time_str.strip().upper()
+    formats = ['%I:%M %p', '%I %p', '%I%M %p'] # Strictly AM/PM formats
+    for fmt in formats:
+        try:
+            return datetime.strptime(time_str, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
+
 @app.route('/<path:filename>.vue', methods=['GET'])
 def serve_vue(filename):
     return app.send_static_file(f"{filename}.vue")
@@ -165,7 +176,7 @@ def register_patient():
         return jsonify({'message': 'Email already registered'}), 409
         
     if User.query.filter_by(username=data['username']).first():
-        return jsonify({'message': 'Username already taken'}), 409
+        return jsonify({'message': 'Username already used'}), 409
 
     patient_role = Role.query.filter_by(name='Patient').first()
     
@@ -220,6 +231,7 @@ def admin_dashboard_stats():
     cache.set(cache_key, data, timeout=300)  
     return jsonify(data), 200
 
+#admin-doctor
 @app.route('/api/admin/doctor', methods=['POST'])
 @admin_required
 def add_doctor():
@@ -234,12 +246,12 @@ def add_doctor():
     if User.query.filter_by(username=data['username']).first():
         return jsonify({'message': 'Username already taken'}), 409
 
-    # Generate random password 
+
     raw_password = data.get('password')
     if not raw_password:
         raw_password = ''.join(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*") for _ in range(12))
 
-    # Department logic 
+    
     dept_name = data['department_name']
     department = Department.query.filter_by(name=dept_name).first()
     if not department:
@@ -247,7 +259,6 @@ def add_doctor():
         db.session.add(department)
         db.session.flush() 
 
-    # Create User account
     doctor_role = Role.query.filter_by(name='Doctor').first()
     new_user = User(
         username=data['username'],
@@ -259,7 +270,7 @@ def add_doctor():
     db.session.add(new_user)
     db.session.flush() 
 
-    # Create Doctor profile 
+
     availability_value = data.get('availability', 'Not specified')
     if availability_value != 'Not specified' and availability_value not in VALID_AVAILABILITY_OPTIONS:
         return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
@@ -346,9 +357,7 @@ def get_doctor(doctor_id):
 @app.route('/api/admin/doctors/search', methods=['GET'])
 @admin_required
 def search_doctors():
-    query = request.args.get('q', '')
-    
-    # Search by specialization 
+    query = request.args.get('q', '') 
     doctors = Doctor.query.join(User).filter(
         (Doctor.specialization.ilike(f'%{query}%')) | 
         (User.username.ilike(f'%{query}%'))
@@ -357,6 +366,8 @@ def search_doctors():
     results = [{'id': doc.id, 'name': doc.user.username, 'specialization': doc.specialization} for doc in doctors]
     return jsonify(results), 200
 
+
+#admin-patients
 @app.route('/api/admin/patients/search', methods=['GET'])
 @admin_required
 def search_patients():
@@ -426,6 +437,8 @@ def update_appointment(appointment_id):
     data = request.get_json()
     
     if 'status' in data:
+        if data['status'] == 'Completed':
+            return jsonify({'message': 'Admins cannot mark appointments as Completed. Only doctors can do this through treatment.'}), 400
         appt.status = data['status']
     if 'doctor_id' in data:
         appt.doctor_id = data['doctor_id']
@@ -435,6 +448,12 @@ def update_appointment(appointment_id):
         appt.time_slot = data['time_slot']
         
     db.session.commit()
+    
+
+    cache.delete(f"patient_history_{appt.patient_id}")
+    cache.delete(f"doctor_dashboard_{appt.doctor_id}")
+    cache.delete("admin_dashboard_stats")
+    
     return jsonify({'message': 'Appointment updated successfully'}), 200
 
 @app.route('/api/admin/appointment/<int:appointment_id>', methods=['DELETE'])
@@ -444,8 +463,17 @@ def delete_appointment(appointment_id):
     if not appt:
         return jsonify({'message': 'Appointment not found'}), 404
         
+    p_id = appt.patient_id
+    d_id = appt.doctor_id
+    
     db.session.delete(appt)
     db.session.commit()
+    
+
+    cache.delete(f"patient_history_{p_id}")
+    cache.delete(f"doctor_dashboard_{d_id}")
+    cache.delete("admin_dashboard_stats")
+    
     return jsonify({'message': 'Appointment deleted successfully'}), 200
 
 @app.route('/api/admin/user/<int:user_id>', methods=['DELETE'])
@@ -517,8 +545,6 @@ def get_doctor_dashboard():
 def get_assigned_patients():
     user_id = get_jwt_identity()
     doctor = Doctor.query.filter_by(user_id=user_id).first()
-    
-    # Patients who have an appointment  
     patients = Patient.query.join(Appointment).filter(Appointment.doctor_id == doctor.id).distinct().all()
     
     return jsonify([{
@@ -561,7 +587,6 @@ def add_treatment():
     if not appt:
         return jsonify({'message': 'Appointment not found.'}), 404
         
-    # Check treatment exists
     if appt.treatment:
          appt.treatment.diagnosis = data.get('diagnosis', appt.treatment.diagnosis)
          appt.treatment.prescription = data.get('prescription', appt.treatment.prescription)
@@ -578,11 +603,10 @@ def add_treatment():
     appt.status = 'Completed' 
     db.session.commit()
     
-    # Clear caches
     cache.delete(f"patient_history_{appt.patient_id}")
     cache.delete(f"doctor_dashboard_{appt.doctor_id}")
     cache.delete("admin_dashboard_stats")
-    print("[CACHE] Patient history, doctor dashboard, and admin stats caches cleared after treatment.")
+    print("[CACHE] Patient history, doctor dashboard, and admin stats caches cleared.")
     
     return jsonify({'message': 'Treatment saved!'}), 201
 
@@ -598,14 +622,17 @@ def update_doctor_availability():
             return jsonify({'message': 'Invalid availability. Must be a day Monday-Saturday.'}), 400
 
         doctor.availability = data['availability']
-        db.session.commit()
         
-        # Invalidate related caches
-        cache.delete(f"doctor_{doctor.id}_availability")
-        cache.clear() 
-        print(f"\n[CACHE] Doctor {doctor.id} updated their availability.\n")
+    if 'time_availability' in data:
+        doctor.time_availability = data['time_availability']
         
-        return jsonify({'message': 'Availability updated.'}), 200
+    db.session.commit()
+        
+    cache.delete(f"doctor_{doctor.id}_availability")
+    cache.clear() 
+    print(f"\n[CACHE] Doctor {doctor.id} updated their availability.\n")
+        
+    return jsonify({'message': 'Availability updated.'}), 200
         
     return jsonify({'message': 'No availability provided.'}), 400
 
@@ -640,10 +667,10 @@ def patient_search_doctors():
     cache_key = f"patient_search_docs_{query}"
     cached_results = cache.get(cache_key)
     if cached_results is not None:
-        print(f"\n[CACHE HIT] Loaded Patient Search '{query}' from Redis memory instantly!\n")
+        print(f"\n[CACHE HIT] Loaded Patient Search '{query}'\n")
         return jsonify(cached_results), 200
         
-    print(f"\n[CACHE MISS] Scanning database for search '{query}'...\n")
+    print(f"\n[CACHE MISS] '{query}'...\n")
     
     doctors = Doctor.query.join(User).filter(
         (Doctor.specialization.ilike(f'%{query}%')) | 
@@ -699,11 +726,25 @@ def book_appointment():
     doctor_id = data['doctor_id']
 
     doctor = Doctor.query.get(doctor_id)
-    if doctor and doctor.availability and doctor.availability not in ['Not specified', 'Everyday']:
-        if appt_date.strftime('%A') != doctor.availability:
-            return jsonify({'message': f'Doctor is only available on {doctor.availability}s'}), 400
+    if doctor:
+        if doctor.availability and doctor.availability not in ['Not specified', 'Everyday']:
+            if appt_date.strftime('%A') != doctor.availability:
+                return jsonify({'message': f'Doctor is only available on {doctor.availability}s'}), 400
+        
 
-    # Crucial logic: Check if Doctor is available at that date and time_slot
+        if doctor.time_availability and ' - ' in doctor.time_availability:
+            start_str, end_str = doctor.time_availability.split(' - ')
+            start_time = parse_time_logic(start_str)
+            end_time = parse_time_logic(end_str)
+            req_time = parse_time_logic(time_slot)
+            
+            if start_time and end_time and req_time:
+                if not (start_time <= req_time <= end_time):
+                    return jsonify({'message': f'Doctor is only available between {start_str} and {end_str}'}), 400
+            elif not req_time:
+                 return jsonify({'message': 'Invalid time format. Please use e.g. 10:00 AM'}), 400
+
+
     existing_appt = Appointment.query.filter_by(
         doctor_id=doctor_id, 
         date=appt_date, 
@@ -723,10 +764,11 @@ def book_appointment():
     db.session.add(new_appt)
     db.session.commit()
     
-    # Invalidate that specific Doctor's availability cache dynamically
+
     cache.delete(f"doctor_{doctor_id}_availability")
-    cache.delete("admin_dashboard_stats")  # Update stats
-    print(f"\n[CACHE] Cleared availability cache for Doctor {doctor_id} due to new booking.\n")
+    cache.delete(f"patient_history_{patient.id}")
+    cache.delete("admin_dashboard_stats")
+    print(f"\n[CACHE] Cleared availability and history cache for Patient {patient.id} and Doctor {doctor_id} after new booking.\n")
     
     return jsonify({'message': 'Appointment successfully booked!'}), 201
 
@@ -750,7 +792,7 @@ def manage_patient_appointment(appointment_id):
     new_date = data.get('date')
     new_time_slot = data.get('time_slot')
     
-    # Rescheduling
+
     if new_date and new_time_slot:
         parsed_date = datetime.strptime(new_date, '%Y-%m-%d').date()
         
@@ -758,7 +800,21 @@ def manage_patient_appointment(appointment_id):
             if parsed_date.strftime('%A') != appt.doctor.availability:
                 return jsonify({'message': f'Doctor is only available on {appt.doctor.availability}s'}), 400
         
-        # Check availability again if changing schedule
+        
+        doc = appt.doctor
+        if doc.time_availability and ' - ' in doc.time_availability:
+            start_str, end_str = doc.time_availability.split(' - ')
+            start_time = parse_time_logic(start_str)
+            end_time = parse_time_logic(end_str)
+            req_time = parse_time_logic(new_time_slot)
+            
+            if start_time and end_time and req_time:
+                if not (start_time <= req_time <= end_time):
+                    return jsonify({'message': f'Doctor is only available between {start_str} and {end_str}'}), 400
+            elif not req_time:
+                 return jsonify({'message': 'Invalid time format. Please use e.g. 10:00 AM'}), 400
+        
+        
         conflict = Appointment.query.filter(
             Appointment.doctor_id == appt.doctor_id,
             Appointment.date == parsed_date,
@@ -772,9 +828,16 @@ def manage_patient_appointment(appointment_id):
             
         appt.date = parsed_date
         appt.time_slot = new_time_slot
-        appt.status = 'Booked' # resetting status upon reschedule
+        appt.status = 'Booked' 
         
     db.session.commit()
+    
+
+    cache.delete(f"patient_history_{patient.id}")
+    cache.delete(f"doctor_dashboard_{appt.doctor_id}")
+    cache.delete("admin_dashboard_stats")
+    print(f"\n[CACHE] Patient {patient.id} updated/cancelled an appointment. Parent/Doctor/Admin caches cleared.\n")
+    
     return jsonify({'message': 'Appointment updated successfully.'}), 200
 
 @app.route('/api/patient/history', methods=['GET'])
@@ -791,7 +854,6 @@ def get_patient_history_self():
         return jsonify(cached), 200
     
     results = []
-    # Fetch all, sorted chronologically
     appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
     
     for appt in appts:
@@ -813,7 +875,7 @@ def get_patient_history_self():
             }
         results.append(appt_data)
     
-    cache.set(cache_key, results, timeout=600)  # 10 minutes
+    cache.set(cache_key, results, timeout=600) 
     return jsonify(results), 200
 
 @app.route('/api/patient/<int:patient_id>/history', methods=['GET'])
@@ -887,7 +949,7 @@ def trigger_export():
     
     appts = Appointment.query.filter_by(patient_id=patient.id).order_by(Appointment.date.desc()).all()
     
-    # Generate CSV in memory bypassing filesystem so user downloads instantly
+    #download medical history 
     si = io.StringIO()
     writer = csv.writer(si)
     writer.writerow(['Patient ID', 'Patient Name', 'Doctor', 'Appointment Date', 'Time Slot', 'Specialization', 'Diagnosis', 'Prescription', 'Next Visit/Notes', 'Status'])
@@ -947,7 +1009,7 @@ def update_shared_appointment_status(appointment_id):
                 return jsonify({'message': 'Patients can only Cancel appointments.'}), 403
 
     if not has_access:
-        return jsonify({'message': 'Access forbidden'}), 403
+        return jsonify({'message': 'Access cancelled'}), 403
         
     appt.status = new_status
     db.session.commit()
@@ -959,10 +1021,8 @@ def update_shared_appointment_status(appointment_id):
     
     return jsonify({'message': f'Appointment updated to {new_status}'}), 200
 
-# ==========================================
-# 5. BACKGROUND TASKS (CELERY & REDIS)
-# ==========================================
 
+# CELERY & REDIS
 @celery.task(name='app.send_daily_reminders')
 def send_daily_reminders():
     """Run every morning: Send email reminders for today's appointments."""
@@ -981,7 +1041,7 @@ def send_daily_reminders():
 
 @celery.task(name='app.generate_monthly_doctor_report')
 def generate_monthly_doctor_report():
-    """Aggregate appointments/treatments for current month & generate HTML summary and email."""
+    """Aggregate treatments for current month & generate email."""
     from flask_mail import Message
     today = datetime.now().date()
     start_of_month = today.replace(day=1)
@@ -1046,7 +1106,6 @@ def export_treatment_csv(patient_id):
                 diag, presc, notes, appt.status
             ])
             
-    # Send Alert / File via Email natively from the background worker
     try:
         msg = Message(
             subject="Your Medical History Export (Async Alert)",
@@ -1063,10 +1122,8 @@ def export_treatment_csv(patient_id):
         
     return filename
 
-# ==========================================
-# 6. START THE SERVER
-# ==========================================
-celery_app = celery
+
+celery_app = celery 
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

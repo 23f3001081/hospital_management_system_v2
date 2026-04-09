@@ -1,16 +1,34 @@
-/* ==========================================================
-   Premium Global Styles for Hospital Management System
-========================================================== */
-
-/* Universal Typography & Sizing */
-body, p, span, div, a, li, td, th, label, input, select {
+body,
+p,
+span,
+div,
+a,
+li,
+td,
+th,
+label,
+input,
+select {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
     font-size: 15px !important;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6, .navbar-brand, .card-header {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.h1,
+.h2,
+.h3,
+.h4,
+.h5,
+.h6,
+.navbar-brand,
+.card-header {
     font-family: 'Inter', sans-serif !important;
     font-size: 18px !important;
     font-weight: 600 !important;
@@ -22,12 +40,10 @@ body {
     color: #334155;
 }
 
-/* Navbar Enhancements */
 .navbar {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
 }
 
-/* Card Enhancements - Clean & Soft */
 .card {
     border: 1px solid rgba(226, 232, 240, 0.8) !important;
     border-radius: 8px;
@@ -45,70 +61,177 @@ body {
     padding: 1rem 1.25rem;
 }
 
-/* Theme Scopes */
+/* Admin */
+body.theme-admin .bg-primary {
+    background-color: #3498db !important;
+    color: #ffffff !important;
+}
 
-/* Theme Scopes - Vibrant Soft Palette */
+body.theme-admin .text-primary {
+    color: #2980b9 !important;
+}
 
-/* Admin Theme: Sky Blue */
-body.theme-admin .bg-primary { background-color: #3498db !important; color: #ffffff !important; }
-body.theme-admin .text-primary { color: #2980b9 !important; }
-body.theme-admin .border-primary { border-color: #3498db !important; }
-body.theme-admin .btn-primary { background-color: #3498db !important; border-color: #3498db !important; color: white !important; }
-body.theme-admin .btn-primary:hover { background-color: #2980b9 !important; border-color: #2980b9 !important; transform: translateY(-1px); }
-body.theme-admin .btn-outline-primary { color: #3498db !important; border-color: #3498db !important; }
-body.theme-admin .btn-outline-primary:hover { background-color: #3498db !important; color: white !important; }
+body.theme-admin .border-primary {
+    border-color: #3498db !important;
+}
 
-/* Doctor Theme: Premium Mint Emerald */
-body.theme-doctor .bg-primary { background-color: #c9a183 !important; color: #ffffff !important; }
-body.theme-doctor .text-primary { color: #c9a183 !important; }
-body.theme-doctor .border-primary { border-color: #bd8255 !important; }
-body.theme-doctor .btn-primary { background-color: #c9a183 !important; border-color: #c9a183 !important; color: white !important; }
-body.theme-doctor .btn-primary:hover { background-color: #c9a183 !important; border-color: #d1976a !important; transform: translateY(-1px); }
-body.theme-doctor .btn-outline-primary { color: #c9a183 !important; border-color: #c9a183 !important; }
-body.theme-doctor .btn-outline-primary:hover { background-color: #c9a183 !important; color: white !important; }
+body.theme-admin .btn-primary {
+    background-color: #3498db !important;
+    border-color: #3498db !important;
+    color: white !important;
+}
 
-/* Darker Shaded Headers */
-body.theme-doctor .bg-info-dark { background-color: #a67c5f !important; color: #ffffff !important; }
+body.theme-admin .btn-primary:hover {
+    background-color: #2980b9 !important;
+    border-color: #2980b9 !important;
+    transform: translateY(-1px);
+}
 
-/* Logout Highlight - Global */
+body.theme-admin .btn-outline-primary {
+    color: #3498db !important;
+    border-color: #3498db !important;
+}
+
+body.theme-admin .btn-outline-primary:hover {
+    background-color: #3498db !important;
+    color: white !important;
+}
+
+/* Doctor */
+body.theme-doctor .bg-primary {
+    background-color: #c9a183 !important;
+    color: #ffffff !important;
+}
+
+body.theme-doctor .text-primary {
+    color: #c9a183 !important;
+}
+
+body.theme-doctor .border-primary {
+    border-color: #bd8255 !important;
+}
+
+body.theme-doctor .btn-primary {
+    background-color: #c9a183 !important;
+    border-color: #c9a183 !important;
+    color: white !important;
+}
+
+body.theme-doctor .btn-primary:hover {
+    background-color: #c9a183 !important;
+    border-color: #d1976a !important;
+    transform: translateY(-1px);
+}
+
+body.theme-doctor .btn-outline-primary {
+    color: #c9a183 !important;
+    border-color: #c9a183 !important;
+}
+
+body.theme-doctor .btn-outline-primary:hover {
+    background-color: #c9a183 !important;
+    color: white !important;
+}
+
+body.theme-doctor .bg-info-dark {
+    background-color: #a67c5f !important;
+    color: #ffffff !important;
+}
+
+
 .btn-logout-highlight {
     background-color: #ffffff !important;
     color: #ef4444 !important;
     border: 2px solid #ef4444 !important;
     transition: all 0.3s ease;
 }
+
 .btn-logout-highlight:hover {
     background-color: #ef4444 !important;
     color: #ffffff !important;
     transform: scale(1.05);
 }
 
-/* Patient Theme: Soft Coral */
-body.theme-patient .bg-primary { background-color: #ff7675 !important; color: #ffffff !important; }
-body.theme-patient .text-primary { color: #d63031 !important; }
-body.theme-patient .border-primary { border-color: #ff7675 !important; }
-body.theme-patient .btn-primary { background-color: #ff7675 !important; border-color: #ff7675 !important; color: white !important; }
-body.theme-patient .btn-primary:hover { background-color: #d63031 !important; border-color: #d63031 !important; transform: translateY(-1px); }
-body.theme-patient .btn-outline-primary { color: #d63031 !important; border-color: #d63031 !important; }
-body.theme-patient .btn-outline-primary:hover { background-color: #d63031 !important; color: white !important; }
+/* Patient */
+body.theme-patient .bg-primary {
+    background-color: #ff7675 !important;
+    color: #ffffff !important;
+}
 
-/* Global Soft Button Overrides */
-.btn-danger { background-color: #fab1a0 !important; border-color: #fab1a0 !important; color: white !important; }
-.btn-danger:hover { background-color: #ff7675 !important; border-color: #ff7675 !important; }
-.btn-success { background-color: #55efc4 !important; border-color: #55efc4 !important; color: white !important; }
-.btn-success:hover { background-color: #00b894 !important; border-color: #00b894 !important; }
-.btn-info { background-color: #81ecec !important; border-color: #eca881 !important; color: white !important; }
-.btn-warning { background-color: #ffeaa7 !important; border-color: #ffeaa7 !important; color: #634d00 !important; }
+body.theme-patient .text-primary {
+    color: #d63031 !important;
+}
 
-/* Button Refinements */
-/* Button Refinements - Smaller & Softer */
+body.theme-patient .border-primary {
+    border-color: #ff7675 !important;
+}
+
+body.theme-patient .btn-primary {
+    background-color: #ff7675 !important;
+    border-color: #ff7675 !important;
+    color: white !important;
+}
+
+body.theme-patient .btn-primary:hover {
+    background-color: #d63031 !important;
+    border-color: #d63031 !important;
+    transform: translateY(-1px);
+}
+
+body.theme-patient .btn-outline-primary {
+    color: #d63031 !important;
+    border-color: #d63031 !important;
+}
+
+body.theme-patient .btn-outline-primary:hover {
+    background-color: #d63031 !important;
+    color: white !important;
+}
+
+
+.btn-danger {
+    background-color: #fab1a0 !important;
+    border-color: #fab1a0 !important;
+    color: white !important;
+}
+
+.btn-danger:hover {
+    background-color: #ff7675 !important;
+    border-color: #ff7675 !important;
+}
+
+.btn-success {
+    background-color: #55efc4 !important;
+    border-color: #55efc4 !important;
+    color: white !important;
+}
+
+.btn-success:hover {
+    background-color: #00b894 !important;
+    border-color: #00b894 !important;
+}
+
+.btn-info {
+    background-color: #81ecec !important;
+    border-color: #eca881 !important;
+    color: white !important;
+}
+
+.btn-warning {
+    background-color: #ffeaa7 !important;
+    border-color: #ffeaa7 !important;
+    color: #634d00 !important;
+}
+
+/* Button */
+
 .btn {
     font-size: 13px !important;
     padding: 4px 10px !important;
     border-radius: 6px !important;
     font-weight: 500 !important;
     transition: all 0.2s ease;
-    border-width: 0px !important; /* Muted modern look */
+    border-width: 0px !important;
 }
 
 .btn:hover {
@@ -116,7 +239,6 @@ body.theme-patient .btn-outline-primary:hover { background-color: #d63031 !impor
     filter: brightness(0.95);
 }
 
-/* Table Refinements */
 .table {
     margin-bottom: 0;
 }
@@ -136,7 +258,7 @@ body.theme-patient .btn-outline-primary:hover { background-color: #d63031 !impor
     color: #334155;
 }
 
-/* Form Inputs */
+
 .form-control,
 .form-select {
     border-radius: 8px;
@@ -149,7 +271,7 @@ body.theme-patient .btn-outline-primary:hover { background-color: #d63031 !impor
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
 }
 
-/* Badge Enhancements */
+
 .badge {
     padding: 0.45em 0.8em;
     border-radius: 6px;

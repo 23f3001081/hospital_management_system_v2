@@ -8,7 +8,7 @@
         </nav>
         
         <div class="container mt-4">
-            <!-- Alerts -->
+        
             <transition name="fade">
                 <div v-if="error" class="alert alert-soft-danger shadow-sm border-0">{{ error }}</div>
             </transition>
@@ -17,10 +17,8 @@
             </transition>
             
             <div class="row mt-4 g-4">
-                <!-- Left Column -->
                 <div class="col-md-6 mb-4">
-                    
-                    <!-- Update Profile Card -->
+                      
                     <div class="card shadow-sm border-0 soft-card mb-4">
                         <div class="card-header bg-transparent border-0 pt-4 pb-2">
                             <h5 class="mb-0 fw-bold text-soft-dark">Update Profile</h5>
@@ -34,18 +32,17 @@
                         </div>
                     </div>
                     
-                    <!-- Book Appointment Card -->
                     <div class="card shadow-sm border-0 soft-card mb-4">
                         <div class="card-header bg-transparent border-0 pt-4 pb-2">
                             <h5 class="mb-0 fw-bold text-soft-dark">Book an Appointment with Doctor</h5>
                         </div>
                         <div class="card-body">
                             <div class="input-group mb-4 shadow-sm rounded-pill overflow-hidden">
-                                <input type="text" class="form-control border-0 px-4" v-model="searchQuery" placeholder="Search specialized doctors...">
+                                <input type="text" class="form-control border-0 px-4" v-model="searchQuery" placeholder="Search doctors">
                                 <button class="btn btn-soft-primary px-4 fw-bold" @click="searchDoctors">Search</button>
                             </div>
                             
-                            <!-- Search Results -->
+                            
                             <div class="search-results-container pe-2">
                                 <div class="card border-0 mb-3 doctor-card shadow-sm" v-for="doc in searchResults" :key="doc.id">
                                     <div class="card-body p-3 d-flex justify-content-between align-items-center">
@@ -65,7 +62,7 @@
                         </div>
                     </div>
                     
-                    <!-- Booking Form (Shows only if doctor selected) -->
+                    <!-- Booking -->
                     <transition name="slide-up">
                         <div class="card border-0 shadow-sm mt-3 soft-card booking-card" v-if="targetDoctor">
                             <div class="card-header bg-transparent border-0 pt-4 pb-2 d-flex justify-content-between align-items-center">
@@ -91,7 +88,7 @@
                     
                 </div>
                 
-                <!-- Right Column -->
+                
                 <div class="col-md-6 mb-4">
                     <div class="card shadow-sm border-0 soft-card h-100 d-flex flex-column">
                         <div class="card-header bg-transparent border-0 pt-4 pb-2 d-flex justify-content-between align-items-center">
@@ -105,39 +102,41 @@
                             <div v-if="history.length === 0" class="text-center text-muted py-5">
                                 You have no medical records yet.
                             </div>
-                            <!-- Record Items -->
-                            <div class="card border-0 shadow-sm bg-white mb-3 record-card rounded-4" v-for="h in history" :key="h.id">
-                                <div class="card-body p-4">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <div>
-                                            <h5 class="fw-bold text-soft-dark mb-1">{{ h.date }}</h5>
-                                            <p class="text-muted mb-0 small">{{ h.time_slot }} • {{ h.doctor_name }}</p>
+
+                            <template v-for="h in history" :key="h.id">
+                                <div class="card border-0 shadow-sm bg-white mb-3 record-card rounded-4" v-if="h.status !== 'Cancelled'">
+                                    <div class="card-body p-4">
+                                        <div class="d-flex justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <h5 class="fw-bold text-soft-dark mb-1">{{ h.date }}</h5>
+                                                <p class="text-muted mb-0 small">{{ h.time_slot }} • {{ h.doctor_name }}</p>
+                                            </div>
+                                            <span class="badge rounded-pill px-3 py-2" 
+                                                  :class="h.status === 'Completed' ? 'bg-soft-success text-success-dark' : (h.status === 'Cancelled' ? 'bg-soft-danger text-danger-dark' : 'bg-soft-primary text-primary-dark')">
+                                                {{ h.status }}
+                                            </span>
                                         </div>
-                                        <span class="badge rounded-pill px-3 py-2" 
-                                              :class="h.status === 'Completed' ? 'bg-soft-success text-success-dark' : (h.status === 'Cancelled' ? 'bg-soft-danger text-danger-dark' : 'bg-soft-primary text-primary-dark')">
-                                            {{ h.status }}
-                                        </span>
-                                    </div>
-                                    
-                                    <div v-if="h.treatment" class="treatment-box p-3 rounded-3 mt-3">
-                                        <p class="mb-2"><b class="text-soft-primary">Diagnosis:</b> <span class="text-secondary">{{ h.treatment.diagnosis }}</span></p>
-                                        <p class="mb-0"><b class="text-soft-primary">Prescription:</b> 
-                                            <span class="d-inline-block bg-white px-2 py-1 rounded text-secondary border mt-1 shadow-sm">{{ h.treatment.prescription }}</span>
-                                        </p>
-                                    </div>
-                                    
-                                    <div v-if="h.status === 'Booked'" class="mt-4 pt-3 border-top d-flex gap-2">
-                                        <button class="btn btn-soft-warning flex-grow-1 rounded-pill fw-bold" @click="openReschedule(h)">Reschedule</button>
-                                        <button class="btn btn-soft-danger flex-grow-1 rounded-pill fw-bold" @click="cancelAppt(h.id)">Cancel</button>
+                                        
+                                        <div v-if="h.treatment" class="treatment-box p-3 rounded-3 mt-3">
+                                            <p class="mb-2"><b class="text-soft-primary">Diagnosis:</b> <span class="text-secondary">{{ h.treatment.diagnosis }}</span></p>
+                                            <p class="mb-0"><b class="text-soft-primary">Prescription:</b> 
+                                                <span class="text-secondary">{{ h.treatment.prescription }}</span>
+                                            </p>
+                                        </div>
+                                        
+                                        <div v-if="h.status === 'Booked'" class="mt-4 pt-3 border-top d-flex gap-2">
+                                            <button class="btn btn-soft-warning flex-grow-1 rounded-pill fw-bold" @click="openReschedule(h)">Reschedule</button>
+                                            <button class="btn btn-soft-danger flex-grow-1 rounded-pill fw-bold" @click="cancelAppt(h.id)">Cancel</button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            </template>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Reschedule Modal Overlay -->
+            
             <transition name="fade">
                 <div v-if="rescheduleData" class="reschedule-overlay d-flex align-items-center justify-content-center">
                     <div class="card border-0 shadow-lg soft-card p-2 reschedule-card rounded-4">
@@ -224,7 +223,7 @@ export default {
             const data = await res.json();
 
             if (res.ok) {
-                this.showMsg('success', "Booked successfully and Doctor has been alerted!");
+                this.showMsg('success', "Booked successfully!");
                 this.targetDoctor = null;
                 this.bookForm = { date: '', time_slot: '' };
                 this.fetchHistory(); 
@@ -243,7 +242,7 @@ export default {
                 document.body.appendChild(a);
                 a.click();
                 a.remove();
-                this.showMsg('success', "Medical Record compiled & downloaded successfully!");
+                this.showMsg('success', "Medical Record downloaded!");
             } else {
                 this.showMsg('error', "Failed to download medical records.");
             }
@@ -253,7 +252,7 @@ export default {
                 method: 'PUT', headers: this.authHeader(), body: JSON.stringify(this.profileForm)
             });
             if (res.ok) { 
-                this.showMsg('success', "Profile completely updated in the Database!"); 
+                this.showMsg('success', "Profile updated."); 
                 this.profileForm = { contact: '', address: '' }; 
             }
         },
@@ -281,7 +280,7 @@ export default {
                 })
             });
             if (res.ok) {
-                this.showMsg('success', "Appointment successfully rescheduled!");
+                this.showMsg('success', "Appointment rescheduled!");
                 this.rescheduleData = null;
                 this.fetchHistory();
             } else {
@@ -294,7 +293,7 @@ export default {
                 const res = await fetch('http://127.0.0.1:5000/api/patient/appointment/' + id, {
                     method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: 'Cancelled' })
                 });
-                if (res.ok) { this.showMsg('success', "Appointment instantly cancelled!"); this.fetchHistory(); }
+                if (res.ok) { this.showMsg('success', "Appointment cancelled!"); this.fetchHistory(); }
             }
         }
     },
@@ -306,7 +305,7 @@ export default {
 </script>
 
 <style scoped>
-/* SOFT COLOR PALETTE AND DESIGN SYSTEM */
+/* COLOR */
 .patient-wrapper {
     min-height: 100vh;
     background-color: #f8fafb;
@@ -315,7 +314,7 @@ export default {
 }
 
 .custom-nav {
-    background: linear-gradient(135deg, #a8d5e2, #b4e1d1); /* Soft powder blue to mint */
+    background: linear-gradient(135deg, #a8d5e2, #b4e1d1); 
 }
 .text-soft-dark { color: #2d3748; }
 .text-soft-primary { color: #5ea8a0; }
@@ -325,7 +324,6 @@ export default {
     border-radius: 1.25rem;
 }
 
-/* Inputs */
 .soft-input {
     background-color: #f1f5f9;
     border: 1px solid transparent;
@@ -340,9 +338,9 @@ export default {
     outline: none;
 }
 
-/* Custom Buttons - Soft UI */
+/*  Buttons */
 .btn-soft-primary {
-    background-color: #8fb9a8; /* soft sage green */
+    background-color: #8fb9a8; 
     color: white;
     border: none;
     transition: all 0.2s ease;
@@ -350,7 +348,7 @@ export default {
 .btn-soft-primary:hover { background-color: #7ba694; color: white; transform: translateY(-1px); }
 
 .btn-soft-danger {
-    background-color: #ffb4a2; /* soft coral pink */
+    background-color: #ffb4a2; 
     color: #b74a3f;
     border: none;
     transition: all 0.2s ease;
@@ -358,38 +356,38 @@ export default {
 .btn-soft-danger:hover { background-color: #ffa38d; color: #b74a3f; }
 
 .btn-soft-warning {
-    background-color: #ffcdb2; /* soft peach */
+    background-color: #ffcdb2; 
     color: #b36336;
     border: none;
     transition: all 0.2s ease;
 }
 .btn-soft-warning:hover { background-color: #ffbc9b; color: #b36336; }
 
-/* Status Badges */
+
 .bg-soft-success { background-color: #d1ebd1 !important; color: #438f43 !important; }
 .bg-soft-danger { background-color: #ffe0da !important; color: #d65548 !important; }
 .bg-soft-primary { background-color: #e4f3f0 !important; color: #5ea8a0 !important; }
 .bg-soft-info { background-color: #dcf2f7 !important; color: #468c9c !important; }
 
-/* Alerts */
+
 .alert-soft-success { background-color: #d1ebd1; color: #438f43; border-radius: 1rem; }
 .alert-soft-danger { background-color: #ffe0da; color: #d65548; border-radius: 1rem; }
 .alert-soft-info { background-color: #eaf6fc; color: #629dbf; }
 
-/* Treatment Box */
+
 .treatment-box {
     background-color: #f7fafb;
     border-left: 4px solid #a8d5e2;
 }
 
-/* Animations */
+
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
 .slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
 .slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(10px); }
 
-/* Reschedule Overlay */
+
 .reschedule-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
@@ -403,7 +401,7 @@ export default {
     width: 100%;
 }
 
-/* Scrollbars */
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }

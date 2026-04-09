@@ -13,12 +13,10 @@
             <div v-if="error" class="alert alert-danger">{{ error }}</div>
             <div v-if="success" class="alert alert-success">{{ success }}</div>
 
-            <!-- Page Title -->
             <div class="mb-4 mt-3">
                 <h4 class="text-secondary fw-bold"></h4>
             </div>
 
-            <!-- Easy Availability Update Form -->
             <div class="card mb-4 shadow-sm border-0">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Availability</h5>
@@ -26,13 +24,13 @@
                 <div class="card-body">
                     <div class="alert alert-info d-flex align-items-center">
                         <div class="me-auto">
-                            <strong>Working Days:</strong> {{ availability || 'Not Set' }} <br>
+                            <strong>Working {{ availability === 'Everyday' ? 'Days' : 'Day' }}:</strong> {{ availability || 'Not Set' }} <br>
                             <strong>Working Hours:</strong> {{ time_availability || 'Not Set' }}
                             <div class="small mt-1 text-muted"></div>
                         </div>
                     </div>
                     <form @submit.prevent="updateAvailability" class="mt-3">
-                        <label class="form-label fw-bold">Update Working Day</label>
+                        <label class="form-label fw-bold">Update Working Days & Working Hours</label>
                         <div class="d-flex gap-2">
                             <select class="form-select w-50" v-model="availability" required>
                                 <option value="" disabled selected>Select availability </option>
@@ -45,13 +43,13 @@
                                 <option value="Sunday">Sunday</option>
                                 <option value="Everyday">Everyday</option>
                             </select>
-                            <button class="btn btn-primary px-4">Update Day</button>
+                            <input type="text" class="form-control w-50" v-model="time_availability" placeholder="e.g. 10:00 AM - 05:00 PM" required>
+                            <button class="btn btn-primary px-4">Update</button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <!-- Very simple table structure -->
             <div class="card shadow-sm border-0 mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Patient Appointments</h5>
@@ -60,33 +58,36 @@
                     <table class="table table-striped table-hover bg-white mb-0">
                         <thead class="table-light">
                             <tr>
-                                <th>Appt ID</th>
+                                <th class="text-center" style="width: 70px;">AID</th>
                                 <th>Patient Name</th>
                                 <th>Visit Date</th>
                                 <th>Visit Time</th>
-                                <th>Current Status</th>
-                                <th>Update Profile</th>
+                                <th>Status</th>
+                                <th class="text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             <tr v-for="appt in appointments" :key="appt.id">
-                                <td>{{ appt.id }}</td>
-                                <td>{{ appt.patient_name }}</td>
-                                <td><b>{{ appt.date }}</b></td>
-                                <td><span class="badge bg-secondary">{{ appt.time_slot }}</span></td>
+                                <td class="text-center fw-bold text-muted">{{ appt.id }}</td>
+                                <td class="fw-bold">{{ appt.patient_name }}</td>
+                                <td>{{ appt.date }}</td>
+                                <td><span class="badge bg-secondary px-3">{{ appt.time_slot }}</span></td>
                                 <td>
-                                    <span class="badge"
+                                    <span class="badge shadow-sm" style="min-width: 100px; display: inline-block; text-align: center;"
                                         :class="{'bg-success': appt.status === 'Completed', 'bg-warning text-dark': appt.status === 'Cancelled', 'bg-primary': appt.status === 'Booked'}">
                                         {{ appt.status }}
                                     </span>
                                 </td>
-                                <td class="d-flex flex-column gap-2">
-                                    <button v-if="appt.status === 'Booked'"
-                                        class="btn btn-sm btn-outline-primary fw-bold"
-                                        @click="openTreatmentForm(appt)">Complete & Prescribe</button>
-                                    <button v-if="appt.status === 'Booked'"
-                                        class="btn btn-sm btn-outline-danger fw-bold"
-                                        @click="cancelAppt(appt.id)">Cancel Appointment</button>
+                                <td class="text-center">
+                                    <div class="d-flex justify-content-center gap-2">
+                                        <button v-if="appt.status === 'Booked'"
+                                            class="btn btn-sm btn-primary px-3 shadow-sm"
+                                            @click="openTreatmentForm(appt)">Complete & Prescribe</button>
+                                        <button v-if="appt.status === 'Booked'"
+                                            class="btn btn-sm btn-danger px-3 shadow-sm"
+                                            @click="cancelAppt(appt.id)">Cancel</button>
+                                        <span v-else class="text-muted small italic">Completed</span>
+                                    </div>
                                 </td>
                             </tr>
                             <tr v-if="appointments.length === 0">
@@ -97,7 +98,6 @@
                 </div>
             </div>
 
-            <!-- Treatment Form Card (Only shows when button gives it an ID) -->
             <div class="card border-0 mb-4 shadow-sm" v-if="activeApptId">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0 fw-bold">Prescribing for {{ activePatientName }}</h5>
@@ -112,10 +112,10 @@
                         <div class="mb-3">
                             <label class="form-label">Medical Prescription</label>
                             <input type="text" class="form-control" v-model="treatment.prescription"
-                                placeholder="What medicine?" required>
+                                placeholder="Which medicine?" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Extra Notes (Optional)</label>
+                            <label class="form-label">Notes</label>
                             <textarea class="form-control" v-model="treatment.notes"></textarea>
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Save & Mark
@@ -221,9 +221,12 @@ export default {
         },
         async updateAvailability() {
             const res = await fetch('http://127.0.0.1:5000/api/doctor/availability', {
-                method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ availability: this.availability })
+                method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ 
+                    availability: this.availability,
+                    time_availability: this.time_availability 
+                })
             });
-            if (res.ok) { this.showMsg('success', "Your availability is now live to all patients!"); this.availability = ''; }
+            if (res.ok) { this.showMsg('success', "Your schedule is now updated."); }
         },
         openTreatmentForm(appt) {
             this.activeApptId = appt.id;
@@ -236,7 +239,7 @@ export default {
                 method: 'POST', headers: this.authHeader(), body: JSON.stringify(payload)
             });
             if (res.ok) {
-                this.showMsg('success', "Medical record encrypted and saved!");
+                this.showMsg('success', "Medical record saved.");
                 this.activeApptId = null;
                 this.treatment = { diagnosis: '', prescription: '', notes: '' };
                 this.fetchData();
@@ -255,7 +258,7 @@ export default {
                 const res = await fetch('http://127.0.0.1:5000/api/doctor/appointment/' + id, {
                     method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: 'Cancelled' })
                 });
-                if (res.ok) { this.showMsg('success', "Appointment instantly cancelled!"); this.fetchData(); }
+                if (res.ok) { this.showMsg('success', "Appointment cancelled"); this.fetchData(); }
                 else { const data = await res.json(); this.showMsg('error', data.message); }
             }
         },

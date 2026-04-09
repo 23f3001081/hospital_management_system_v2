@@ -1,6 +1,5 @@
 <template>
     <div>
-        <!-- Navbar -->
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
             <div class="container-fluid">
                 <span class="navbar-brand mb-0 h1">Admin Dashboard</span>
@@ -8,9 +7,9 @@
                     <a class="nav-link" href="#" @click.prevent="currentTab='overview'"
                         :class="{active: currentTab==='overview'}">Dashboard</a>
                     <a class="nav-link" href="#" @click.prevent="currentTab='doctors'"
-                        :class="{active: currentTab==='doctors'}">Doctor Dashboard</a>
+                        :class="{active: currentTab==='doctors'}">Doctor</a>
                     <a class="nav-link" href="#" @click.prevent="currentTab='patients'"
-                        :class="{active: currentTab==='patients'}">Patient Dashboard</a>
+                        :class="{active: currentTab==='patients'}">Patient</a>
                     <button class="btn btn-sm btn-logout-highlight ms-3 px-3 fw-bold" @click="logout">Logout</button>
                 </div>
             </div>
@@ -20,7 +19,6 @@
             <div v-if="error" class="alert alert-danger">{{ error }}</div>
             <div v-if="success" class="alert alert-success">{{ success }}</div>
 
-            <!-- Dashboard Stats -->
             <h3 v-show="currentTab === 'overview'">Overview</h3>
             <div class="row mb-4" v-show="currentTab === 'overview'">
                 <div class="col-md-4">
@@ -50,8 +48,6 @@
             </div>
 
 
-
-            <!-- Add Doctor Simple form with HTML validations -->
             <div class="card mb-4" v-show="currentTab === 'doctors'">
                 <div class="card-header bg-primary text-white">Create New Doctor Account</div>
                 <div class="card-body">
@@ -62,7 +58,7 @@
                             <div class="col-md-4"><input type="email" class="form-control" v-model="newDoc.email"
                                     placeholder="Email Address" required></div>
                             <div class="col-md-4"><input type="password" class="form-control" v-model="newDoc.password"
-                                    placeholder="Password (manual)" required></div>
+                                    placeholder="Password" required></div>
                             
                             <div class="col-md-4">
                                 <select class="form-select" v-model="newDoc.department_name" required>
@@ -100,20 +96,20 @@
                 </div>
             </div>
 
-            <!-- Manage Doctors Table (CRUD) -->
+            <!-- Doctors Table -->
             <div class="card mb-4 shadow-sm" v-show="currentTab === 'doctors'">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">Manage Hospital Doctors</h5>
+                    <h5 class="mb-0">Manage Doctors</h5>
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <table class="table table-bordered table-striped bg-white mb-0">
                         <thead class="table-light">
                             <tr>
                                 <th>Doc ID</th>
-                                <th>Name (User)</th>
+                                <th>Name</th>
                                 <th>Department</th>
-                                <th>Availability (Editable)</th>
-                                <th>Time Availability (Editable)</th>
+                                <th>Availability</th>
+                                <th>Time Availability</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -170,15 +166,14 @@
                 </div>
             </div>
 
-            <!-- Search UI -->
             <div class="row mb-4 mt-4">
                 <div class="col-md-12 mb-4" v-show="currentTab === 'doctors'">
                     <div class="card shadow-sm border-0">
-                        <div class="card-header bg-primary text-white"><h5 class="mb-0">Search Doctors</h5></div>
+                        <div class="card-header bg-primary text-white"><h5 class="mb-0">Search Doctor</h5></div>
                         <div class="card-body">
                             <div class="input-group">
                                 <input type="text" class="form-control" v-model="searchDocQuery"
-                                    placeholder="Search Doctors...">
+                                    placeholder="Search Doctor...">
                                 <button class="btn btn-primary" @click="searchDoctors">Search</button>
                             </div>
                             <ul class="list-group mt-3" v-if="docSearchResults.length">
@@ -192,11 +187,11 @@
 
                 <div class="col-md-12 mb-4" v-show="currentTab === 'patients'">
                     <div class="card shadow-sm border-0 mb-4">
-                        <div class="card-header bg-primary text-white"><h5 class="mb-0">Search & Manage Specific Patients</h5></div>
+                        <div class="card-header bg-primary text-white"><h5 class="mb-0">Search Patients</h5></div> 
                         <div class="card-body">
                             <div class="input-group mb-3">
                                 <input type="text" class="form-control" v-model="searchPatQuery"
-                                    placeholder="Search Patients by Name/ID/Contact...">
+                                    placeholder="Search Patients">
                                 <button class="btn btn-primary" @click="searchPatients">Search</button>
                             </div>
                             <ul class="list-group" v-if="patSearchResults.length">
@@ -218,18 +213,18 @@
                         </div>
                     </div>
 
-                    <!-- ALL PATIENTS TABLE -->
+                    <!--PATIENTS TABLE -->
                     <div class="card shadow-sm border-0">
                         <div class="card-header bg-primary text-white"><h5 class="mb-0">All Registered Patients</h5></div>
                         <div class="card-body p-0 table-responsive">
                             <table class="table table-striped table-hover bg-white mb-0">
                                 <thead class="table-light">
                                     <tr>
-                                        <th>Pat ID</th>
-                                        <th>Name (User)</th>
+                                        <th>PID</th>
+                                        <th>Name</th>
                                         <th>Email</th>
-                                        <th>Contact Number</th>
-                                        <th>Home Address</th>
+                                        <th>Contact</th>
+                                        <th>Address</th>
                                         <th>Actions</th>
                                     </tr>
                                 </thead>
@@ -252,7 +247,7 @@
                                         </td>
                                     </tr>
                                     <tr v-if="patients.length === 0">
-                                        <td colspan="6" class="text-center text-muted py-3">No patients registered in the system.</td>
+                                        <td colspan="6" class="text-center text-muted py-3">No patients registered.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -261,7 +256,7 @@
                 </div>
             </div>
 
-            <!-- View All Appointments Table -->
+            <!-- View Appointments  -->
             <div class="card mb-4 shadow-sm border-0" v-show="currentTab === 'overview'">
                 <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center rounded-top-4">
                     <h5 class="mb-0 fw-bold">Hospital Appointments Overview</h5>
@@ -283,7 +278,7 @@
                                 <th>Doctor</th>
                                 <th>Patient</th>
                                 <th>Date</th>
-                                <th>Exact Time</th>
+                                <th>Time</th>
                                 <th>Status</th>
                                 <th>Action</th>
                             </tr>
@@ -301,11 +296,10 @@
                                     </span>
                                 </td>
                                 <td class="d-flex flex-column gap-2">
-                                    <button v-if="appt.status !== 'Completed'" class="btn btn-sm btn-outline-success fw-bold"
-                                        @click="updateAppointmentStatus(appt.id, 'Completed')">Mark Completed</button>
+
                                     <button v-if="appt.status !== 'Cancelled'" class="btn btn-sm btn-outline-warning fw-bold text-dark"
-                                        @click="updateAppointmentStatus(appt.id, 'Cancelled')">Cancel Appt</button>
-                                    <button class="btn btn-sm btn-danger fw-bold" @click="deleteAppt(appt.id)">Erase Record</button>
+                                        @click="updateAppointmentStatus(appt.id, 'Cancelled')">Cancel Appointment</button>
+                                    <button class="btn btn-sm btn-danger fw-bold" @click="deleteAppt(appt.id)">Remove Record</button>
                                 </td>
                             </tr>
                         </tbody>
@@ -361,7 +355,7 @@ export default {
 
                 const res4 = await fetch('http://127.0.0.1:5000/api/admin/patients', { headers: this.authHeader() });
                 this.patients = await res4.json();
-            } catch (e) { this.showMsg('error', "Error loading python responses."); }
+            } catch (e) { this.showMsg('error', "Loading data..."); } 
         },
         async addDoctor() {
             try {
@@ -379,13 +373,13 @@ export default {
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    this.showMsg('success', "Success! Give the doctor this temporary password: " + data.generated_password);
-                    alert("DOCTOR SAVED SUCCESSFULLY!\n\nEmail: " + this.newDoc.email + "\nTemporary Password: " + data.generated_password);
+                    this.showMsg("Password for Doctor: " + data.generated_password); 
+                    alert("DOCTOR SAVED SUCCESSFULLY!\n\nEmail: " + this.newDoc.email + "\nPassword: " + data.generated_password);
                     this.newDoc = { username: '', email: '', password: '', department_name: '', availability: '', time_availability: '' };
                     this.fetchData();
                 }
                 else if (res.status === 401) {
-                    alert("SESSION EXPIRED: Your security token timed out. You will be logged out now. Please log in again.");
+                    alert("SESSION EXPIRED:You will be logged out now. Please log in again.");
                     this.logout();
                 }
                 else {
@@ -394,7 +388,7 @@ export default {
                 }
             } catch (e) {
                 this.showMsg('error', "Failed to run POST.");
-                alert("NETWORK ERROR: Cannot reach Python Server.");
+                alert("NETWORK ERROR: Cannot reach Server.");
             }
             window.scrollTo({ top: 0, behavior: 'smooth' });
         },
@@ -403,9 +397,9 @@ export default {
                 const res = await fetch('http://127.0.0.1:5000/api/admin/doctor/' + doc_id, {
                     method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ name: name, specialization: spec, availability: avail, time_availability: time_avail })
                 });
-                if (res.ok) { this.showMsg('success', "Doctor profile instantly updated via DB!"); this.fetchData(); }
+                if (res.ok) { this.showMsg("Doctor profile updated!"); this.fetchData(); }
                 else { const data = await res.json(); this.showMsg('error', data.message); }
-            } catch (e) { this.showMsg('error', "Network error during PUT request."); }
+            } catch (e) { this.showMsg('error', "Network error."); }
         },
         async searchDoctors() {
             if (!this.searchDocQuery) return;
@@ -413,7 +407,7 @@ export default {
             if (res.ok) {
                 this.docSearchResults = await res.json();
                 if (this.docSearchResults.length === 0) {
-                    alert('No doctor found matching your search!');
+                    alert('No doctor found');
                 }
             }
         },
@@ -427,19 +421,19 @@ export default {
                 const res = await fetch('http://127.0.0.1:5000/api/admin/patient/' + p.id, {
                     method: 'PUT', headers: this.authHeader(), body: JSON.stringify({ name: p.name, contact: p.contact, address: p.address })
                 });
-                if (res.ok) { this.showMsg('success', "Patient profile instantly updated via DB!"); }
+                if (res.ok) { this.showMsg('success',"Patient profile updated."); }
                 else { const data = await res.json(); this.showMsg('error', data.message); }
-            } catch (e) { this.showMsg('error', "Network error during PUT request."); }
+            } catch (e) { this.showMsg('error', "Network error"); }
         },
         async removeUser(user_id) {
-            if (confirm("DANGER: Permanently revoke this doctor's auth and delete their hospital profile? This cannot be undone.")) {
+            if (confirm("DANGER: Permanently remove this doctor's profile?")) {
                 const res = await fetch('http://127.0.0.1:5000/api/admin/user/' + user_id, { method: 'DELETE', headers: this.authHeader() });
-                if (res.ok) { this.showMsg('success', "Doctor completely erased from the hospital network."); this.fetchData(); }
+                if (res.ok) { this.showMsg("Doctor removed from the hospital records."); this.fetchData(); }
                 else { const data = await res.json(); this.showMsg('error', data.message); }
             }
         },
         async deleteAppt(id) {
-            if (confirm("Permanently erase this booking from the system?")) {
+            if (confirm("Erase this booking?")) {
                 await fetch('http://127.0.0.1:5000/api/admin/appointment/' + id, { method: 'DELETE', headers: this.authHeader() });
                 this.fetchData(); 
             }
@@ -449,11 +443,11 @@ export default {
                 method: 'PATCH', headers: this.authHeader(), body: JSON.stringify({ status: status })
             });
             if (res.ok) {
-                this.showMsg('success', 'Appointment status updated successfully!');
+                this.showMsg('Appointment updated successfully!');
                 this.fetchData();
             } else {
                 const data = await res.json();
-                this.showMsg('error', data.message || 'Failed to update appointment status');
+                this.showMsg('error', data.message || 'Failed to update appointment');
             }
         }
     },

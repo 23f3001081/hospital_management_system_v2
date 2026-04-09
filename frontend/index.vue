@@ -4,7 +4,7 @@
             <h2 class="text-center mb-4 text-primary">Hospital Management System Login</h2>
 
             <div class="card shadow-sm">
-                <!-- Extremely simple tab links -->
+                <!--  tab links -->
                 <div class="card-header bg-white">
                     <ul class="nav nav-tabs card-header-tabs">
                         <li class="nav-item"><a class="nav-link" :class="{active: view === 'login'}" href="#"
@@ -13,12 +13,12 @@
                                 @click.prevent="view = 'register'">Register Patient</a></li>
                     </ul>
                 </div>
-                <!-- Forms -->
+            
                 <div class="card-body">
                     <div v-if="error" class="alert alert-danger">{{ error }}</div>
                     <div v-if="success" class="alert alert-success">{{ success }}</div>
 
-                    <!-- Login View with HTML5 basic validation -->
+                    <!-- Login -->
                     <form v-if="view === 'login'" @submit.prevent="login">
                         <div class="mb-3">
                             <label class="form-label">Email</label>
@@ -31,7 +31,7 @@
                         <button type="submit" class="btn btn-primary w-100">Sign In</button>
                     </form>
 
-                    <!-- Register View with required and minlength constraints -->
+                    <!-- Register -->
                     <form v-if="view === 'register'" @submit.prevent="register">
                         <div class="mb-2">
                             <label class="form-label">Full Name</label>

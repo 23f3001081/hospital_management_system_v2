@@ -2,12 +2,12 @@ from flask import Flask
 from werkzeug.security import generate_password_hash
 from models import db, User, Role
 
-# Initialize a dummy Flask app strictly for database setup
+# Initialize Flask app for database setup
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Flask-Security requires these, even for basic DB init
+# Flask-Security 
 app.config['SECRET_KEY'] = 'super-secret-key-change-later'
 app.config['SECURITY_PASSWORD_SALT'] = 'super-secret-salt-change-later'
 
@@ -15,10 +15,8 @@ db.init_app(app)
 
 def setup_database():
     with app.app_context():
-        # 1. Create all tables based on models.py
         db.create_all()
         
-        # 2. Programmatically create Roles if they don't exist
         roles = ['Admin', 'Doctor', 'Patient']
         for role_name in roles:
             role = Role.query.filter_by(name=role_name).first()
@@ -27,7 +25,6 @@ def setup_database():
                 db.session.add(role)
         db.session.commit()
 
-        # 3. Programmatically create the Default Admin User
         admin_role = Role.query.filter_by(name='Admin').first()
         admin_user = User.query.filter_by(email='admin@hms.com').first()
         
@@ -36,7 +33,7 @@ def setup_database():
             admin_user = User(
                 username='superadmin',
                 email='admin@hms.com',
-                password_hash=generate_password_hash('admin123'), # Default password
+                password_hash=generate_password_hash('admin123'), 
                 active=True
             )
             admin_user.roles.append(admin_role)

@@ -2,7 +2,7 @@ import uuid
 from flask_sqlalchemy import SQLAlchemy
 db = SQLAlchemy()
 
-# Association table for Flask-Security Roles
+# Flask-Security Roles
 roles_users = db.Table(
     'roles_users',
     db.Column('user_id', db.Integer(), db.ForeignKey('users.id')),
