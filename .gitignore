@@ -6,11 +6,10 @@ __pycache__/
 
 # Environment and Virtual Environments
 .env
-.venv/
-venv/
-ENV/
-env.bak/
 venv.bak/
+myenv/
+.venv/
+env/
 
 # SQLite Database
 *.db
@@ -18,8 +17,9 @@ venv.bak/
 instance/
 
 # Flask Caching and Celery
-celerybeat-schedule
+celerybeat-schedule*
 *.pid
+exports/
 
 # IDEs
 .vscode/

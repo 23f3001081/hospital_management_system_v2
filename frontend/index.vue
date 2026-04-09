@@ -1,0 +1,116 @@
+<template>
+    <div class="row justify-content-center">
+        <div class="col-md-5">
+            <h2 class="text-center mb-4 text-primary">Hospital Management System Login</h2>
+
+            <div class="card shadow-sm">
+                <!-- Extremely simple tab links -->
+                <div class="card-header bg-white">
+                    <ul class="nav nav-tabs card-header-tabs">
+                        <li class="nav-item"><a class="nav-link" :class="{active: view === 'login'}" href="#"
+                                @click.prevent="view = 'login'">Login</a></li>
+                        <li class="nav-item"><a class="nav-link" :class="{active: view === 'register'}" href="#"
+                                @click.prevent="view = 'register'">Register Patient</a></li>
+                    </ul>
+                </div>
+                <!-- Forms -->
+                <div class="card-body">
+                    <div v-if="error" class="alert alert-danger">{{ error }}</div>
+                    <div v-if="success" class="alert alert-success">{{ success }}</div>
+
+                    <!-- Login View with HTML5 basic validation -->
+                    <form v-if="view === 'login'" @submit.prevent="login">
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" v-model="loginForm.email" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" v-model="loginForm.password" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Sign In</button>
+                    </form>
+
+                    <!-- Register View with required and minlength constraints -->
+                    <form v-if="view === 'register'" @submit.prevent="register">
+                        <div class="mb-2">
+                            <label class="form-label">Full Name</label>
+                            <input type="text" class="form-control" v-model="registerForm.username" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" v-model="registerForm.email" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Phone</label>
+                            <input type="text" class="form-control" v-model="registerForm.contact" pattern="[0-9]+"
+                                minlength="7" required title="Numbers only">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Home Address</label>
+                            <input type="text" class="form-control" v-model="registerForm.address">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Create Password</label>
+                            <input type="password" class="form-control" v-model="registerForm.password"
+                                minlength="6" required>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Register</button>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</template>
+
+<script>
+export default {
+    data() {
+        return {
+            view: 'login', error: '', success: '',
+            loginForm: { email: '', password: '' },
+            registerForm: { username: '', email: '', password: '', contact: '', address: '' }
+        }
+    },
+    methods: {
+        showMsg(type, msg) {
+            if (type === 'success') {
+                this.success = msg;
+                setTimeout(() => { if (this.success === msg) this.success = ''; }, 5000);
+            } else {
+                this.error = msg;
+                setTimeout(() => { if (this.error === msg) this.error = ''; }, 5000);
+            }
+        },
+        async login() {
+            try {
+                const res = await fetch('http://127.0.0.1:5000/api/login', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.loginForm)
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('role', data.role);
+                    this.showMsg('success', 'Login Successful!');
+                    setTimeout(() => {
+                        if (data.role === 'Admin') window.location.href = 'admin/admin_dashboard.html';
+                        if (data.role === 'Doctor') window.location.href = 'doctor/doctor_dashboard.html';
+                        if (data.role === 'Patient') window.location.href = 'patient/patient_dashboard.html';
+                    }, 500);
+                } else { this.showMsg('error', data.message); }
+            } catch { this.showMsg('error', 'Network Error'); }
+        },
+        async register() {
+            try {
+                const res = await fetch('http://127.0.0.1:5000/api/register', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.registerForm)
+                });
+                if (res.ok) { this.showMsg('success', 'Registered! Please log in.'); this.view = 'login'; }
+                else { const data = await res.json(); this.showMsg('error', data.message); }
+            } catch { this.showMsg('error', 'Network Error'); }
+        }
+    }
+}
+</script>
