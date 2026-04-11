@@ -68,7 +68,7 @@
                                     <option value="Neurology">Neurology</option>
                                     <option value="Dermatology">Dermatology</option>
                                     <option value="Pediatrics">Pediatrics</option>
-                                    <option value="Oncology">Dentist</option>
+                                    <option value="Dentistry">Dentistry</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
@@ -414,7 +414,12 @@ export default {
         async searchPatients() {
             if (!this.searchPatQuery) return;
             const res = await fetch('http://127.0.0.1:5000/api/admin/patients/search?q=' + this.searchPatQuery, { headers: this.authHeader() });
-            if (res.ok) this.patSearchResults = await res.json();
+            if (res.ok) {
+                this.patSearchResults = await res.json();
+                if (this.patSearchResults.length === 0) {
+                    alert('Patient not found');
+                }
+            }
         },
         async updatePatient(p) {
             try {
