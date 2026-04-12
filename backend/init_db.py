@@ -6,8 +6,7 @@ from models import db, User, Role
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///hms.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# Flask-Security 
+ 
 app.config['SECRET_KEY'] = 'super-secret-key-change-later'
 app.config['SECURITY_PASSWORD_SALT'] = 'super-secret-salt-change-later'
 

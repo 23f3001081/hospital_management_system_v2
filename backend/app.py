@@ -716,7 +716,6 @@ def get_doctor_availability(doctor_id):
 @app.route('/api/patient/appointments/book', methods=['POST'])
 @patient_required
 def book_appointment():
-    """Patient books a new appointment. Checks doctor availability."""
     data = request.get_json()
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
@@ -775,7 +774,6 @@ def book_appointment():
 @app.route('/api/patient/appointment/<int:appointment_id>', methods=['PATCH'])
 @patient_required
 def manage_patient_appointment(appointment_id):
-    """Patient reschedules or cancels their own appointment."""
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
     
@@ -843,7 +841,6 @@ def manage_patient_appointment(appointment_id):
 @app.route('/api/patient/history', methods=['GET'])
 @patient_required
 def get_patient_history_self():
-    """Return upcoming and past appointments including diagnosis and prescription."""
     user_id = get_jwt_identity()
     patient = Patient.query.filter_by(user_id=user_id).first()
     
@@ -881,7 +878,6 @@ def get_patient_history_self():
 @app.route('/api/patient/<int:patient_id>/history', methods=['GET'])
 @jwt_required()
 def cross_role_patient_history(patient_id):
-    """Retrieve history. Patient sees theirs, Doctor sees assigned, Admin sees all."""
     claims = get_jwt()
     user_role = claims.get('role')
     user_id = int(get_jwt_identity())
@@ -939,7 +935,6 @@ def cross_role_patient_history(patient_id):
 @app.route('/api/patient/export-history', methods=['POST'])
 @patient_required
 def trigger_export():
-    """Trigger the CSV export task and download synchronously."""
     from flask import send_file
     import io
     import csv
@@ -979,7 +974,6 @@ def trigger_export():
 @app.route('/api/appointments/<int:appointment_id>/status', methods=['PATCH'])
 @jwt_required()
 def update_shared_appointment_status(appointment_id):
-    """Update status of appointment to Booked, Completed, Cancelled."""
     claims = get_jwt()
     user_role = claims.get('role')
     user_id = int(get_jwt_identity())
@@ -1014,7 +1008,6 @@ def update_shared_appointment_status(appointment_id):
     appt.status = new_status
     db.session.commit()
     
-    # Clear relevant caches
     cache.delete(f"patient_history_{appt.patient_id}")
     cache.delete(f"doctor_dashboard_{appt.doctor_id}")
     cache.delete("admin_dashboard_stats")
@@ -1025,7 +1018,7 @@ def update_shared_appointment_status(appointment_id):
 # CELERY & REDIS
 @celery.task(name='app.send_daily_reminders')
 def send_daily_reminders():
-    """Run every morning: Send email reminders for today's appointments."""
+    
     from flask_mail import Message
     today = datetime.now().date()
     appointments = Appointment.query.filter_by(date=today, status='Booked').all()
@@ -1041,7 +1034,7 @@ def send_daily_reminders():
 
 @celery.task(name='app.generate_monthly_doctor_report')
 def generate_monthly_doctor_report():
-    """Aggregate treatments for current month & generate email."""
+
     from flask_mail import Message
     today = datetime.now().date()
     start_of_month = today.replace(day=1)
@@ -1078,7 +1071,6 @@ def generate_monthly_doctor_report():
 
 @celery.task(name='app.export_treatment_csv')
 def export_treatment_csv(patient_id):
-    """Async Job: Generate CSV of treatment history and email it to the user."""
     from flask_mail import Message
     
     patient = Patient.query.get(patient_id)
