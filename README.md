@@ -58,6 +58,3 @@ To run the full system, you need to open **four terminal windows**:
 - `backend/`: Flask application, models, and background tasks.
 - `frontend/`: Vue.js components and HTML entry points.
 - `static_url_path`: Configured to serve `frontend/` from the root.
-
----
-Built with modern web standards and Agentic AI assistance.
